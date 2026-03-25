@@ -1,0 +1,25 @@
+[project]
+name = "agent-eval"
+version = "0.1.0"
+description = "Self-hostable evaluation suite for LLM tasks and agents"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.18.4",
+    "fastapi>=0.135.2",
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.3.3",
+    "pydantic>=2",
+    "python-dotenv>=1.2.2",
+    "sqlalchemy>=2.0.48",
+    "uvicorn>=0.42.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
