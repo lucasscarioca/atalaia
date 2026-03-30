@@ -69,36 +69,56 @@ def _build_test_target_app() -> FastAPI:
     return target_app
 
 
-@pytest.fixture
-def local_target_base_url() -> Generator[str, None, None]:
-    target_app = _build_test_target_app()
+def _pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
+        return sock.getsockname()[1]
 
+
+def _start_test_target_server(
+    target_app: FastAPI, port: int
+) -> tuple[uvicorn.Server, threading.Thread]:
     config = uvicorn.Config(
         target_app, host="127.0.0.1", port=port, log_level="warning"
     )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
+    return server, thread
 
-    base_url = f"http://127.0.0.1:{port}"
+
+def _wait_for_server_ready(base_url: str) -> None:
     deadline = time.time() + 5
     while time.time() < deadline:
         try:
             response = httpx.get(f"{base_url}/health", timeout=0.2)
             if response.status_code == 200:
-                break
+                return
         except httpx.HTTPError:
             time.sleep(0.05)
-    else:
-        server.should_exit = True
-        thread.join(timeout=5)
-        raise RuntimeError("Local target test server did not start")
+
+    raise RuntimeError("Local target test server did not start")
+
+
+def _stop_test_target_server(server: uvicorn.Server, thread: threading.Thread) -> None:
+    server.should_exit = True
+    thread.join(timeout=5)
+
+
+@pytest.fixture
+def local_target_base_url() -> Generator[str, None, None]:
+    target_app = _build_test_target_app()
+    port = _pick_free_port()
+    server, thread = _start_test_target_server(target_app, port)
+    base_url = f"http://127.0.0.1:{port}"
+
+    try:
+        _wait_for_server_ready(base_url)
+    except RuntimeError:
+        _stop_test_target_server(server, thread)
+        raise
 
     try:
         yield base_url
     finally:
-        server.should_exit = True
-        thread.join(timeout=5)
+        _stop_test_target_server(server, thread)
