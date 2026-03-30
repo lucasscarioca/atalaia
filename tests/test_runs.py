@@ -1,8 +1,5 @@
-import httpx
-
-
 def test_create_run_executes_and_stores_results(
-    client, clean_db_tables, monkeypatch
+    client, clean_db_tables, local_target_base_url
 ) -> None:
     dataset_response = client.post(
         "/datasets",
@@ -15,12 +12,12 @@ def test_create_run_executes_and_stores_results(
             "cases": [
                 {
                     "case_key": "intent-001",
-                    "input": {"text": "cancel my account"},
+                    "input": {"text": "label:cancellation"},
                     "expected": {"label": "cancellation"},
                 },
                 {
                     "case_key": "intent-002",
-                    "input": {"text": "upgrade my plan"},
+                    "input": {"text": "label:upgrade"},
                     "expected": {"label": "upgrade"},
                 },
             ]
@@ -31,18 +28,11 @@ def test_create_run_executes_and_stores_results(
         "/targets",
         json={
             "name": "Run target",
-            "base_url": "https://target.example.com",
+            "base_url": local_target_base_url,
             "endpoint_path": "/classify",
         },
     )
     target_id = target_response.json()["id"]
-
-    def fake_post(url, json, headers, timeout):
-        request = httpx.Request("POST", url)
-        label = "cancellation" if "cancel" in json["input"]["text"] else "upgrade"
-        return httpx.Response(200, json={"label": label}, request=request)
-
-    monkeypatch.setattr("app.target_client.http.httpx.post", fake_post)
 
     run_response = client.post(
         "/runs",
@@ -71,7 +61,7 @@ def test_create_run_executes_and_stores_results(
 
 
 def test_create_run_records_failed_and_error_results(
-    client, clean_db_tables, monkeypatch
+    client, clean_db_tables, local_target_base_url
 ) -> None:
     dataset_response = client.post(
         "/datasets",
@@ -84,12 +74,12 @@ def test_create_run_records_failed_and_error_results(
             "cases": [
                 {
                     "case_key": "intent-001",
-                    "input": {"text": "cancel"},
+                    "input": {"text": "wrong:cancellation"},
                     "expected": {"label": "cancellation"},
                 },
                 {
                     "case_key": "intent-002",
-                    "input": {"text": "billing"},
+                    "input": {"text": "malformed"},
                     "expected": {"label": "billing"},
                 },
             ]
@@ -99,20 +89,11 @@ def test_create_run_records_failed_and_error_results(
         "/targets",
         json={
             "name": "Mixed result target",
-            "base_url": "https://target.example.com",
+            "base_url": local_target_base_url,
             "endpoint_path": "/classify",
         },
     )
     target_id = target_response.json()["id"]
-
-    def fake_post(url, json, headers, timeout):
-        request = httpx.Request("POST", url)
-        text = json["input"]["text"]
-        if text == "cancel":
-            return httpx.Response(200, json={"label": "wrong-label"}, request=request)
-        return httpx.Response(200, json={"oops": True}, request=request)
-
-    monkeypatch.setattr("app.target_client.http.httpx.post", fake_post)
 
     run_response = client.post(
         "/runs",
