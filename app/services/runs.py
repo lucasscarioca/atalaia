@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db.session import SessionLocal
 from app.db.enums import ResultStatus, RunStatus, TargetType
 from app.models.dataset import Dataset, DatasetCase
 from app.models.run import Run
@@ -44,8 +45,20 @@ def create_run(db: Session, payload: CreateRunRequest) -> Run:
     db.commit()
     db.refresh(run)
 
-    execute_run(db, run, dataset, target)
     return run
+
+
+def execute_run_in_background(run_id: UUID) -> None:
+    db = SessionLocal()
+    try:
+        run = get_run_or_raise(db, run_id)
+        dataset = get_dataset_or_raise(db, run.dataset_id)
+        target = get_target_or_raise(db, run.target_id)
+        execute_run(db, run, dataset, target)
+    except Exception:
+        return
+    finally:
+        db.close()
 
 
 def execute_run(db: Session, run: Run, dataset: Dataset, target: Target) -> None:
@@ -64,12 +77,19 @@ def execute_run(db: Session, run: Run, dataset: Dataset, target: Target) -> None
         run.summary_json = _build_summary(results)
         run.metrics_json = _build_metrics(results)
         db.commit()
-    except Exception:
+    except Exception as exc:
         db.rollback()
         run = db.get(Run, run.id)
         if run is not None:
             run.status = RunStatus.FAILED
             run.completed_at = datetime.now(UTC)
+            run.summary_json = {
+                "run_error": {
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                }
+            }
+            run.metrics_json = {}
             db.commit()
         raise
 

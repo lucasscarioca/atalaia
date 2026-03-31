@@ -60,6 +60,10 @@ def _build_test_target_app() -> FastAPI:
 
         if not isinstance(text, str):
             return {"oops": True}
+        if text.startswith("sleep:"):
+            _, seconds, label = text.split(":", 2)
+            time.sleep(float(seconds))
+            return {"label": label}
         if text.startswith("label:"):
             return {"label": text.removeprefix("label:")}
         if text.startswith("wrong:"):

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -13,9 +13,13 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 
 
 @router.post("", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
-def create_run(payload: CreateRunRequest, db: Session = Depends(get_db)) -> Run:
+def create_run(
+    payload: CreateRunRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> Run:
     try:
-        return run_service.create_run(db, payload)
+        run = run_service.create_run(db, payload)
     except run_service.DatasetNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -36,6 +40,9 @@ def create_run(payload: CreateRunRequest, db: Session = Depends(get_db)) -> Run:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported target_type '{exc.args[0]}' for run execution",
         ) from None
+
+    background_tasks.add_task(run_service.execute_run_in_background, run.id)
+    return run
 
 
 @router.get("", response_model=list[RunResponse])
