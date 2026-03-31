@@ -18,6 +18,53 @@ def _wait_for_run_completion(client, run_id: str) -> dict:
     return _wait_for_run_status(client, run_id, {"completed", "failed"})
 
 
+def _create_dataset_with_case(
+    client, *, name: str, text: str, expected_label: str
+) -> str:
+    dataset_response = client.post(
+        "/datasets",
+        json={"name": name, "task_type": "classification"},
+    )
+    dataset_id = dataset_response.json()["id"]
+    client.post(
+        f"/datasets/{dataset_id}/cases:import",
+        json={
+            "cases": [
+                {
+                    "case_key": "intent-001",
+                    "input": {"text": text},
+                    "expected": {"label": expected_label},
+                }
+            ]
+        },
+    )
+    return dataset_id
+
+
+def _create_target(client, *, name: str, base_url: str, timeout_ms: int = 10000) -> str:
+    target_response = client.post(
+        "/targets",
+        json={
+            "name": name,
+            "base_url": base_url,
+            "endpoint_path": "/classify",
+            "timeout_ms": timeout_ms,
+        },
+    )
+    return target_response.json()["id"]
+
+
+def _create_run(client, *, dataset_id: str, target_id: str) -> dict:
+    run_response = client.post(
+        "/runs",
+        json={"dataset_id": dataset_id, "target_id": target_id},
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+    assert run["status"] == "queued"
+    return _wait_for_run_completion(client, run["id"])
+
+
 def test_create_run_executes_and_stores_results(
     client, clean_db_tables, local_target_base_url
 ) -> None:
@@ -128,6 +175,102 @@ def test_create_run_exposes_running_state(
     completed_run = _wait_for_run_completion(client, run["id"])
     assert completed_run["status"] == "completed"
     assert completed_run["summary_json"]["passed"] == 1
+
+
+def test_create_run_records_http_status_error(
+    client, clean_db_tables, local_target_base_url
+) -> None:
+    dataset_id = _create_dataset_with_case(
+        client,
+        name="HTTP status dataset",
+        text="status:500",
+        expected_label="cancellation",
+    )
+    target_id = _create_target(
+        client, name="HTTP status target", base_url=local_target_base_url
+    )
+
+    run = _create_run(client, dataset_id=dataset_id, target_id=target_id)
+
+    assert run["summary_json"] == {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "error": 1,
+        "invalid_case": 0,
+    }
+
+    results_response = client.get(f"/runs/{run['id']}/results")
+    assert results_response.status_code == 200
+    results = results_response.json()
+    assert len(results) == 1
+    assert results[0]["status"] == "error"
+    assert results[0]["error_type"] == "http_status_error"
+
+
+def test_create_run_records_timeout_error(
+    client, clean_db_tables, local_target_base_url
+) -> None:
+    dataset_id = _create_dataset_with_case(
+        client,
+        name="Timeout dataset",
+        text="sleep:0.3:cancellation",
+        expected_label="cancellation",
+    )
+    target_id = _create_target(
+        client,
+        name="Timeout target",
+        base_url=local_target_base_url,
+        timeout_ms=50,
+    )
+
+    run = _create_run(client, dataset_id=dataset_id, target_id=target_id)
+
+    assert run["summary_json"] == {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "error": 1,
+        "invalid_case": 0,
+    }
+
+    results_response = client.get(f"/runs/{run['id']}/results")
+    assert results_response.status_code == 200
+    results = results_response.json()
+    assert len(results) == 1
+    assert results[0]["status"] == "error"
+    assert results[0]["error_type"] == "timeout"
+
+
+def test_create_run_records_invalid_json_error(
+    client, clean_db_tables, local_target_base_url
+) -> None:
+    dataset_id = _create_dataset_with_case(
+        client,
+        name="Invalid json dataset",
+        text="raw:not-json",
+        expected_label="cancellation",
+    )
+    target_id = _create_target(
+        client, name="Invalid json target", base_url=local_target_base_url
+    )
+
+    run = _create_run(client, dataset_id=dataset_id, target_id=target_id)
+
+    assert run["summary_json"] == {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "error": 1,
+        "invalid_case": 0,
+    }
+
+    results_response = client.get(f"/runs/{run['id']}/results")
+    assert results_response.status_code == 200
+    results = results_response.json()
+    assert len(results) == 1
+    assert results[0]["status"] == "error"
+    assert results[0]["error_type"] == "invalid_json"
 
 
 def test_create_run_records_failed_and_error_results(

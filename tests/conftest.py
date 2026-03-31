@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 
@@ -54,12 +54,17 @@ def _build_test_target_app() -> FastAPI:
         return {"status": "ok"}
 
     @target_app.post("/classify")
-    def classify(payload: dict[str, Any]) -> dict[str, Any]:
+    def classify(payload: dict[str, Any]) -> Any:
         input_json = payload.get("input", {})
         text = input_json.get("text")
 
         if not isinstance(text, str):
             return {"oops": True}
+        if text.startswith("status:"):
+            _, status_code = text.split(":", 1)
+            return Response(status_code=int(status_code))
+        if text == "raw:not-json":
+            return Response(content="not-json", media_type="application/json")
         if text.startswith("sleep:"):
             _, seconds, label = text.split(":", 2)
             time.sleep(float(seconds))
