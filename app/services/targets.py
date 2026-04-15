@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db.enums import TargetType
 from app.models.target import Target
 from app.schemas.target import CreateTargetRequest
 
@@ -35,10 +36,14 @@ def create_target(db: Session, payload: CreateTargetRequest) -> Target:
     return target
 
 
-def list_targets(db: Session, *, limit: int, offset: int) -> list[Target]:
-    statement = (
-        select(Target).order_by(Target.created_at.desc()).limit(limit).offset(offset)
-    )
+def list_targets(
+    db: Session, *, limit: int, offset: int, target_type: TargetType | None = None
+) -> list[Target]:
+    statement = select(Target)
+    if target_type is not None:
+        statement = statement.where(Target.target_type == target_type)
+
+    statement = statement.order_by(Target.created_at.desc()).limit(limit).offset(offset)
     return list(db.scalars(statement).all())
 
 

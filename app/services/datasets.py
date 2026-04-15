@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db.enums import TaskType
 from app.models.dataset import Dataset, DatasetCase
 from app.schemas.dataset import CreateDatasetRequest, ImportDatasetCasesRequest
 
@@ -44,10 +45,14 @@ def create_dataset(db: Session, payload: CreateDatasetRequest) -> Dataset:
     return dataset
 
 
-def list_datasets(db: Session, *, limit: int, offset: int) -> list[Dataset]:
-    statement = (
-        select(Dataset).order_by(Dataset.created_at.desc()).limit(limit).offset(offset)
-    )
+def list_datasets(
+    db: Session, *, limit: int, offset: int, task_type: TaskType | None = None
+) -> list[Dataset]:
+    statement = select(Dataset)
+    if task_type is not None:
+        statement = statement.where(Dataset.task_type == task_type)
+
+    statement = statement.order_by(Dataset.created_at.desc()).limit(limit).offset(offset)
     return list(db.scalars(statement).all())
 
 

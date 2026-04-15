@@ -14,7 +14,7 @@ def test_create_and_get_target(client, clean_db_tables) -> None:
     assert create_response.status_code == 201
     target = create_response.json()
     assert target["name"] == "Classifier API"
-    assert target["headers_json"] == {"Authorization": "Bearer token"}
+    assert target["headers"] == {"Authorization": "Bearer token"}
 
     get_response = client.get(f"/targets/{target['id']}")
 
@@ -46,3 +46,31 @@ def test_list_targets_supports_limit_and_offset(client, clean_db_tables) -> None
     targets = list_response.json()
     assert len(targets) == 1
     assert targets[0]["name"] == "Target two"
+
+
+def test_list_targets_supports_target_type_filter(client, clean_db_tables) -> None:
+    client.post(
+        "/targets",
+        json={
+            "name": "HTTP target",
+            "target_type": "http",
+            "base_url": "https://http.example.com",
+            "endpoint_path": "/classify",
+        },
+    )
+    client.post(
+        "/targets",
+        json={
+            "name": "Python adapter target",
+            "target_type": "python_adapter",
+            "base_url": "https://python.example.com",
+            "endpoint_path": "/classify",
+        },
+    )
+
+    list_response = client.get("/targets?target_type=python_adapter")
+
+    assert list_response.status_code == 200
+    targets = list_response.json()
+    assert len(targets) == 1
+    assert targets[0]["name"] == "Python adapter target"

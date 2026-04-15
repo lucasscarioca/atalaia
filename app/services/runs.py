@@ -1,19 +1,22 @@
 from datetime import UTC, datetime
+from logging import getLogger
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.session import SessionLocal
 from app.db.enums import ResultStatus, RunStatus, TargetType
+from app.db.session import SessionLocal
 from app.models.dataset import Dataset, DatasetCase
 from app.models.run import Run
 from app.models.run_result import RunResult
 from app.models.target import Target
 from app.schemas.run import CreateRunRequest
+from app.services.datasets import get_dataset_or_raise
+from app.services.targets import get_target_or_raise
 from app.target_client.http import TargetClientError, invoke_target
-from app.services.datasets import DatasetNotFoundError, get_dataset_or_raise
-from app.services.targets import TargetNotFoundError, get_target_or_raise
+
+logger = getLogger(__name__)
 
 
 class UnsupportedTaskTypeError(Exception):
@@ -21,6 +24,10 @@ class UnsupportedTaskTypeError(Exception):
 
 
 class UnsupportedTargetTypeError(Exception):
+    pass
+
+
+class RunNotFoundError(Exception):
     pass
 
 
@@ -50,18 +57,24 @@ def create_run(db: Session, payload: CreateRunRequest) -> Run:
 
 def execute_run_in_background(run_id: UUID) -> None:
     db = SessionLocal()
+    logger.info("starting background run execution", extra={"run_id": str(run_id)})
     try:
         run = get_run_or_raise(db, run_id)
         dataset = get_dataset_or_raise(db, run.dataset_id)
         target = get_target_or_raise(db, run.target_id)
         execute_run(db, run, dataset, target)
-    except Exception:
-        return
+        logger.info("finished background run execution", extra={"run_id": str(run_id)})
+    except Exception as exc:
+        logger.exception(
+            "background run execution failed", extra={"run_id": str(run_id)}
+        )
+        _mark_run_failed(db, run_id, exc)
     finally:
         db.close()
 
 
 def execute_run(db: Session, run: Run, dataset: Dataset, target: Target) -> None:
+    logger.info("marking run running", extra={"run_id": str(run.id)})
     run.status = RunStatus.RUNNING
     run.started_at = datetime.now(UTC)
     db.commit()
@@ -77,21 +90,41 @@ def execute_run(db: Session, run: Run, dataset: Dataset, target: Target) -> None
         run.summary_json = _build_summary(results)
         run.metrics_json = _build_metrics(results)
         db.commit()
+        logger.info(
+            "completed run execution",
+            extra={
+                "run_id": str(run.id),
+                "total_cases": len(results),
+                "passed": run.summary_json["passed"],
+                "failed": run.summary_json["failed"],
+                "errors": run.summary_json["error"],
+            },
+        )
     except Exception as exc:
         db.rollback()
-        run = db.get(Run, run.id)
-        if run is not None:
-            run.status = RunStatus.FAILED
-            run.completed_at = datetime.now(UTC)
-            run.summary_json = {
-                "run_error": {
-                    "type": exc.__class__.__name__,
-                    "message": str(exc),
-                }
-            }
-            run.metrics_json = {}
-            db.commit()
+        _mark_run_failed(db, run.id, exc)
         raise
+
+
+def _mark_run_failed(db: Session, run_id: UUID, exc: Exception) -> None:
+    run = db.get(Run, run_id)
+    if run is None:
+        return
+
+    logger.error(
+        "marking run failed",
+        extra={"run_id": str(run_id), "error_type": exc.__class__.__name__},
+    )
+    run.status = RunStatus.FAILED
+    run.completed_at = datetime.now(UTC)
+    run.summary_json = {
+        "run_error": {
+            "type": exc.__class__.__name__,
+            "message": str(exc),
+        }
+    }
+    run.metrics_json = {}
+    db.commit()
 
 
 def _execute_classification_case(
@@ -207,8 +240,24 @@ def _build_metrics(results: list[RunResult]) -> dict[str, float | int | None]:
     }
 
 
-def list_runs(db: Session, *, limit: int, offset: int) -> list[Run]:
-    statement = select(Run).order_by(Run.created_at.desc()).limit(limit).offset(offset)
+def list_runs(
+    db: Session,
+    *,
+    limit: int,
+    offset: int,
+    status: RunStatus | None = None,
+    dataset_id: UUID | None = None,
+    target_id: UUID | None = None,
+) -> list[Run]:
+    statement = select(Run)
+    if status is not None:
+        statement = statement.where(Run.status == status)
+    if dataset_id is not None:
+        statement = statement.where(Run.dataset_id == dataset_id)
+    if target_id is not None:
+        statement = statement.where(Run.target_id == target_id)
+
+    statement = statement.order_by(Run.created_at.desc()).limit(limit).offset(offset)
     return list(db.scalars(statement).all())
 
 
@@ -219,19 +268,29 @@ def get_run_or_raise(db: Session, run_id: UUID) -> Run:
     return run
 
 
-class RunNotFoundError(Exception):
-    pass
-
-
-def list_run_results(
-    db: Session, run_id: UUID, *, limit: int, offset: int
-) -> list[RunResult]:
-    get_run_or_raise(db, run_id)
+def get_run_summary_or_raise(db: Session, run_id: UUID) -> tuple[Run, list[RunResult]]:
+    run = get_run_or_raise(db, run_id)
     statement = (
         select(RunResult)
         .where(RunResult.run_id == run_id)
         .order_by(RunResult.created_at.asc())
-        .limit(limit)
-        .offset(offset)
     )
+    results = list(db.scalars(statement).all())
+    return run, results
+
+
+def list_run_results(
+    db: Session,
+    run_id: UUID,
+    *,
+    limit: int,
+    offset: int,
+    status: ResultStatus | None = None,
+) -> list[RunResult]:
+    get_run_or_raise(db, run_id)
+    statement = select(RunResult).where(RunResult.run_id == run_id)
+    if status is not None:
+        statement = statement.where(RunResult.status == status)
+
+    statement = statement.order_by(RunResult.created_at.asc()).limit(limit).offset(offset)
     return list(db.scalars(statement).all())

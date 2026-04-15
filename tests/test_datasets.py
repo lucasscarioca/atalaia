@@ -70,6 +70,25 @@ def test_list_datasets_supports_limit_and_offset(client, clean_db_tables) -> Non
     assert datasets[0]["name"] == "Dataset two"
 
 
+def test_list_datasets_supports_task_type_filter(client, clean_db_tables) -> None:
+    client.post(
+        "/datasets",
+        json={"name": "Classification dataset", "task_type": "classification"},
+    )
+    client.post(
+        "/datasets",
+        json={"name": "QA dataset", "task_type": "qa_with_context"},
+    )
+
+    list_response = client.get("/datasets?task_type=qa_with_context")
+
+    assert list_response.status_code == 200
+    datasets = list_response.json()
+
+    assert len(datasets) == 1
+    assert datasets[0]["name"] == "QA dataset"
+
+
 def test_import_dataset_cases(client, clean_db_tables) -> None:
     create_response = client.post(
         "/datasets",
@@ -103,12 +122,12 @@ def test_import_dataset_cases(client, clean_db_tables) -> None:
     assert imported["dataset_id"] == dataset_id
     assert imported["imported_count"] == 2
     assert imported["cases"][0]["case_key"] == "intent-001"
-    assert imported["cases"][0]["input_json"] == {
+    assert imported["cases"][0]["input"] == {
         "text": "I want to cancel my subscription"
     }
-    assert imported["cases"][0]["expected_json"] == {"label": "cancellation"}
-    assert imported["cases"][0]["metadata_json"] == {"source": "manual"}
-    assert imported["cases"][1]["metadata_json"] == {}
+    assert imported["cases"][0]["expected"] == {"label": "cancellation"}
+    assert imported["cases"][0]["metadata"] == {"source": "manual"}
+    assert imported["cases"][1]["metadata"] == {}
 
 
 def test_import_dataset_cases_rejects_duplicate_case_keys(

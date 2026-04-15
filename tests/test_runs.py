@@ -130,6 +130,54 @@ def test_create_run_executes_and_stores_results(
     assert results[1]["status"] == "passed"
 
 
+def test_create_run_summary_endpoint_returns_run_and_results(
+    client, clean_db_tables, local_target_base_url
+) -> None:
+    dataset_response = client.post(
+        "/datasets",
+        json={"name": "Summary dataset", "task_type": "classification"},
+    )
+    dataset_id = dataset_response.json()["id"]
+    client.post(
+        f"/datasets/{dataset_id}/cases:import",
+        json={
+            "cases": [
+                {
+                    "case_key": "intent-001",
+                    "input": {"text": "label:cancellation"},
+                    "expected": {"label": "cancellation"},
+                }
+            ]
+        },
+    )
+    target_response = client.post(
+        "/targets",
+        json={
+            "name": "Summary target",
+            "base_url": local_target_base_url,
+            "endpoint_path": "/classify",
+        },
+    )
+    target_id = target_response.json()["id"]
+
+    run_response = client.post(
+        "/runs",
+        json={"dataset_id": dataset_id, "target_id": target_id},
+    )
+    run_id = run_response.json()["id"]
+
+    _wait_for_run_completion(client, run_id)
+
+    summary_response = client.get(f"/runs/{run_id}/summary")
+
+    assert summary_response.status_code == 200
+    summary = summary_response.json()
+    assert summary["run"]["id"] == run_id
+    assert summary["run"]["status"] == "completed"
+    assert len(summary["results"]) == 1
+    assert summary["results"][0]["status"] == "passed"
+
+
 def test_create_run_exposes_running_state(
     client, clean_db_tables, local_target_base_url
 ) -> None:
@@ -175,6 +223,34 @@ def test_create_run_exposes_running_state(
     completed_run = _wait_for_run_completion(client, run["id"])
     assert completed_run["status"] == "completed"
     assert completed_run["summary_json"]["passed"] == 1
+
+
+def test_list_runs_supports_filters(client, clean_db_tables, local_target_base_url) -> None:
+    first_dataset_id = _create_dataset_with_case(
+        client,
+        name="Run filter dataset one",
+        text="label:cancellation",
+        expected_label="cancellation",
+    )
+    second_dataset_id = _create_dataset_with_case(
+        client,
+        name="Run filter dataset two",
+        text="label:upgrade",
+        expected_label="upgrade",
+    )
+    target_id = _create_target(
+        client, name="Run filter target", base_url=local_target_base_url
+    )
+
+    first_run = _create_run(client, dataset_id=first_dataset_id, target_id=target_id)
+    _create_run(client, dataset_id=second_dataset_id, target_id=target_id)
+
+    list_response = client.get(f"/runs?dataset_id={first_dataset_id}")
+
+    assert list_response.status_code == 200
+    runs = list_response.json()
+    assert len(runs) == 1
+    assert runs[0]["id"] == first_run["id"]
 
 
 def test_create_run_records_http_status_error(
@@ -335,6 +411,14 @@ def test_create_run_records_failed_and_error_results(
     assert len(results) == 1
     assert results[0]["status"] == "error"
     assert results[0]["error_type"] == "invalid_response"
+
+    failed_results_response = client.get(
+        f"/runs/{run['id']}/results?status=failed"
+    )
+    assert failed_results_response.status_code == 200
+    failed_results = failed_results_response.json()
+    assert len(failed_results) == 1
+    assert failed_results[0]["status"] == "failed"
 
 
 def test_create_run_records_unexpected_background_failure(

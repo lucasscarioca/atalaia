@@ -6,6 +6,7 @@ class Settings:
     def __init__(self) -> None:
         self.app_name = os.getenv("APP_NAME", "Agent Eval API")
         self.environment = os.getenv("ENVIRONMENT", "development")
+        self.log_level = os.getenv("LOG_LEVEL", "INFO")
         self.database_url = os.getenv(
             "DATABASE_URL",
             "postgresql+psycopg://postgres:postgres@localhost:5432/agent_eval",

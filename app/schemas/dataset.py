@@ -40,15 +40,15 @@ class ClassificationCaseCreate(BaseModel):
 
 
 class ClassificationCaseResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
     dataset_id: UUID
     case_key: str
     task_type: TaskType
-    input_json: dict[str, Any]
-    expected_json: dict[str, Any]
-    metadata_json: dict[str, Any]
+    input: dict[str, Any] = Field(alias="input_json")
+    expected: dict[str, Any] = Field(alias="expected_json")
+    metadata: dict[str, Any] = Field(alias="metadata_json")
     created_at: datetime
 
 

@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.db.enums import TaskType
 from app.db.session import get_db
 from app.models.dataset import Dataset
 from app.schemas.dataset import (
@@ -28,9 +29,12 @@ def create_dataset(
 def list_datasets(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    task_type: TaskType | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> list[Dataset]:
-    return dataset_service.list_datasets(db, limit=limit, offset=offset)
+    return dataset_service.list_datasets(
+        db, limit=limit, offset=offset, task_type=task_type
+    )
 
 
 @router.get("/{dataset_id}", response_model=DatasetResponse)
@@ -46,6 +50,7 @@ def get_dataset(dataset_id: UUID, db: Session = Depends(get_db)) -> Dataset:
 @router.post(
     "/{dataset_id}/cases:import",
     response_model=ImportDatasetCasesResponse,
+    response_model_by_alias=False,
     status_code=status.HTTP_201_CREATED,
 )
 def import_dataset_cases(
@@ -83,7 +88,11 @@ def import_dataset_cases(
     )
 
 
-@router.get("/{dataset_id}/cases", response_model=list[ClassificationCaseResponse])
+@router.get(
+    "/{dataset_id}/cases",
+    response_model=list[ClassificationCaseResponse],
+    response_model_by_alias=False,
+)
 def list_dataset_cases(
     dataset_id: UUID,
     limit: int = Query(default=50, ge=1, le=100),

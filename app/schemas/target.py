@@ -26,7 +26,7 @@ class UpdateTargetRequest(BaseModel):
 
 
 class TargetResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
     name: str
@@ -34,5 +34,5 @@ class TargetResponse(BaseModel):
     base_url: str
     endpoint_path: str
     timeout_ms: int
-    headers_json: dict[str, Any] | None
+    headers: dict[str, Any] | None = Field(default=None, alias="headers_json")
     created_at: datetime
