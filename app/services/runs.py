@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from logging import getLogger
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.enums import ResultStatus, RunStatus, TargetType
@@ -31,6 +31,12 @@ class RunNotFoundError(Exception):
     pass
 
 
+class DatasetHasNoCasesError(Exception):
+    def __init__(self, dataset_id: UUID) -> None:
+        self.dataset_id = dataset_id
+        super().__init__(f"Dataset {dataset_id} has no cases")
+
+
 def create_run(db: Session, payload: CreateRunRequest) -> Run:
     dataset = get_dataset_or_raise(db, payload.dataset_id)
     target = get_target_or_raise(db, payload.target_id)
@@ -39,6 +45,12 @@ def create_run(db: Session, payload: CreateRunRequest) -> Run:
         raise UnsupportedTaskTypeError(dataset.task_type.value)
     if target.target_type != TargetType.HTTP:
         raise UnsupportedTargetTypeError(target.target_type.value)
+
+    case_count = db.scalar(
+        select(func.count()).select_from(DatasetCase).where(DatasetCase.dataset_id == dataset.id)
+    )
+    if case_count == 0:
+        raise DatasetHasNoCasesError(dataset.id)
 
     run = Run(
         dataset_id=dataset.id,

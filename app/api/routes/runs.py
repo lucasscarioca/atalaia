@@ -46,6 +46,11 @@ def create_run(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported target_type '{exc.args[0]}' for run execution",
         ) from None
+    except run_service.DatasetHasNoCasesError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from None
 
     background_tasks.add_task(run_service.execute_run_in_background, run.id)
     return run

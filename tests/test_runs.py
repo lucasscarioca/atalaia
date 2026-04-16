@@ -65,6 +65,33 @@ def _create_run(client, *, dataset_id: str, target_id: str) -> dict:
     return _wait_for_run_completion(client, run["id"])
 
 
+def test_create_run_rejects_empty_dataset(
+    client, clean_db_tables, local_target_base_url
+) -> None:
+    dataset_response = client.post(
+        "/datasets",
+        json={"name": "Empty run dataset", "task_type": "classification"},
+    )
+    dataset_id = dataset_response.json()["id"]
+    target_response = client.post(
+        "/targets",
+        json={
+            "name": "Empty run target",
+            "base_url": local_target_base_url,
+            "endpoint_path": "/classify",
+        },
+    )
+    target_id = target_response.json()["id"]
+
+    run_response = client.post(
+        "/runs",
+        json={"dataset_id": dataset_id, "target_id": target_id},
+    )
+
+    assert run_response.status_code == 400
+    assert run_response.json()["detail"] == f"Dataset {dataset_id} has no cases"
+
+
 def test_create_run_executes_and_stores_results(
     client, clean_db_tables, local_target_base_url
 ) -> None:
