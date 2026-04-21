@@ -1,1 +1,1 @@
-"""Agent Eval application package."""
+"""oak-eval application package."""

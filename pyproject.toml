@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "agent-eval"
+name = "oak-eval"
 version = "0.1.0"
-description = "Self-hostable evaluation suite for LLM tasks and agents"
+description = "Git-native, self-hosted evals-as-code system for AI agents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,9 +19,16 @@ dependencies = [
     "uvicorn>=0.42.0",
 ]
 
+[project.scripts]
+oak-eval = "oak_eval.cli:main"
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*", "oak_eval*", "evals*"]
+exclude = ["tests*"]
 
 [dependency-groups]
 dev = [

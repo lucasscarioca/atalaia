@@ -15,4 +15,5 @@ wheels/
 # Tool caches
 .pytest_cache/
 
-docs/
+.docs/
+.oak-eval/
