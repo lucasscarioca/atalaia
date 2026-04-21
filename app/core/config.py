@@ -11,6 +11,7 @@ class Settings:
             "DATABASE_URL",
             "postgresql+psycopg://postgres:postgres@localhost:5432/oak_eval",
         )
+        self.bootstrap_admin_token = os.getenv("OAK_EVAL_BOOTSTRAP_TOKEN", "dev-bootstrap")
 
 
 @lru_cache

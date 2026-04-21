@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 
 from .comparison import compare_runs
-from .core import ComparisonResult, EvalSuite, RunResult
+from .core import ArtifactRef, CaseResult, ComparisonResult, EvalSuite, RunResult
 
 
 @dataclass(slots=True)
@@ -74,12 +74,31 @@ class OakEvalClient:
         response.raise_for_status()
         data = response.json()
         return RunResult(
-            run_id=data["run_id"],
-            suite_name=data["suite_name"],
+            run_id=str(data["run_id"]),
+            suite_name=str(data.get("suite_name", "remote-suite")),
             summary=data["summary"],
             metrics=data["metrics"],
-            cases=[],
-            artifacts=[],
+            cases=[
+                CaseResult(
+                    case_id=str(case["case_id"]),
+                    status=case["status"],
+                    score=case.get("score"),
+                    expected=case["expected"],
+                    actual=case.get("actual"),
+                    latency_ms=case.get("latency_ms"),
+                    error=case.get("error"),
+                )
+                for case in data.get("cases", [])
+            ],
+            artifacts=[
+                ArtifactRef(
+                    artifact_id=str(artifact["artifact_id"]),
+                    kind=artifact["kind"],
+                    path=artifact.get("path"),
+                    mime_type=artifact.get("mime_type"),
+                )
+                for artifact in data.get("artifacts", [])
+            ],
         )
 
     def wait_for_run(self, run_id: str, timeout: float | None = None) -> RunResult:

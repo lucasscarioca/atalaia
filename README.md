@@ -28,3 +28,9 @@ uv run oak-eval run --suite evals.sample:suite
 ```
 
 Or use the Python SDK directly from `oak_eval` and author suites under `evals/`.
+
+## Remote API foundation
+
+- Create a token with `POST /auth/tokens` using `X-Oak-Eval-Admin-Token`
+- Use `Authorization: Bearer <token>` for `/projects` and `/runs`
+- Remote execution is being built out next
