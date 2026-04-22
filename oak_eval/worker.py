@@ -5,7 +5,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from .bundle import load_suite_from_bundle
+import httpx
+
+from .bundle import open_suite_bundle
 from .client import OakEvalClient
 from .core import ArtifactRef, CaseResult, RunResult, run_local
 
@@ -31,23 +33,36 @@ class OakEvalWorker:
         if not isinstance(suite_spec, str) or not suite_spec:
             return self._fail_run(run, error=f"run {run_id} is missing suite_spec")
 
-        self.client.start_run(run_id)
+        try:
+            self.client.start_run(run_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 409:
+                return self.client.get_run(run_id)
+            raise
+
         try:
             bundle = run.config.get("bundle")
             if not (isinstance(bundle, dict) and bundle.get("archive_base64")):
                 artifact = self.client.get_run_artifact(run_id, "suite.bundle")
-                bundle = artifact.get("payload") if isinstance(artifact, dict) else None
-            if isinstance(bundle, dict) and bundle.get("archive_base64"):
-                try:
-                    suite = load_suite_from_bundle(bundle)
-                except Exception as exc:
-                    raise RuntimeError(f"failed to load suite bundle for run {run_id}: {exc}") from exc
-            else:
+                payload = artifact.get("payload") if isinstance(artifact, dict) else None
+                if isinstance(payload, dict) and payload.get("archive_base64"):
+                    bundle = payload
+                elif isinstance(payload, dict) and payload.get("bundle"):
+                    bundle = payload["bundle"]
+                else:
+                    bundle = payload
+            if not (isinstance(bundle, dict) and bundle.get("archive_base64")):
                 raise RuntimeError(f"run {run_id} is missing a usable suite bundle")
-            with TemporaryDirectory() as tmpdir:
+
+            with open_suite_bundle(bundle) as suite, TemporaryDirectory() as tmpdir:
                 artifact_dir = Path(tmpdir) / "artifacts"
                 result = run_local(suite, artifact_dir=artifact_dir)
-            return self.client.complete_run(run_id, result)
+                try:
+                    return self.client.complete_run(run_id, result)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 409:
+                        return self.client.get_run(run_id)
+                    raise
         except Exception as exc:  # pragma: no cover - exercised in integration failure paths
             return self._fail_run(run, error=f"{exc.__class__.__name__}: {exc}")
 

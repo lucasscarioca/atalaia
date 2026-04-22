@@ -109,6 +109,47 @@ def test_remote_run_waits_for_worker_completion(tmp_path) -> None:
     assert result.summary["passed"] == 1
 
 
+def test_worker_can_load_bundle_from_artifact_when_config_is_missing() -> None:
+    @dataclass
+    class ArtifactFallbackClient:
+        completed: list[RunResult] = field(default_factory=list)
+
+        def list_runs(self, *, status: str | None = None, project_slug: str | None = None) -> list[str]:
+            assert status == "queued"
+            return ["run-3"]
+
+        def get_run(self, run_id: str) -> RunResult:
+            return RunResult(
+                run_id=run_id,
+                suite_name="sample",
+                summary={"total": 1, "passed": 0, "failed": 0, "error": 0, "invalid_case": 1},
+                metrics={"accuracy": None, "average_latency_ms": None},
+                cases=[],
+                artifacts=[],
+                config={"suite_spec": "evals.sample:suite"},
+                status="queued",
+            )
+
+        def start_run(self, run_id: str) -> RunResult:
+            return self.get_run(run_id)
+
+        def get_run_artifact(self, run_id: str, artifact_key: str) -> dict[str, object]:
+            assert artifact_key == "suite.bundle"
+            return {"payload": {"bundle": package_suite_bundle("evals.sample:suite")}}
+
+        def complete_run(self, run_id: str, result: RunResult) -> RunResult:
+            self.completed.append(result)
+            return result
+
+    worker = OakEvalWorker(client=ArtifactFallbackClient())
+
+    processed = worker.process_once()
+
+    assert processed == 1
+    assert worker.client.completed[0].status == "completed"
+    assert worker.client.completed[0].cases[0].status == "passed"
+
+
 def test_worker_reports_missing_bundle_as_failure() -> None:
     @dataclass
     class MissingBundleClient:

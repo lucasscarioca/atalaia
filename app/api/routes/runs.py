@@ -48,7 +48,10 @@ def start_run_endpoint(run_id: UUID, db: DBSession, _token=Depends(require_api_t
     run = db.scalar(select(Run).where(Run.id == run_id))
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
-    start_run(db, run)
+    try:
+        start_run(db, run)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     db.commit()
     db.refresh(run)
     return _serialize_run(db, run)
@@ -59,7 +62,10 @@ def complete_run_endpoint(run_id: UUID, payload: RunComplete, db: DBSession, _to
     run = db.scalar(select(Run).where(Run.id == run_id))
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
-    complete_run(db, run, payload)
+    try:
+        complete_run(db, run, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     db.commit()
     db.refresh(run)
     return _serialize_run(db, run)
@@ -105,7 +111,7 @@ def _serialize_run(db: DBSession, run: Run) -> RunRead:
                 kind=artifact.kind,
                 path=artifact.path,
                 mime_type=artifact.mime_type,
-                payload=artifact.payload_json if artifact.kind == "bundle" else None,
+                payload=_artifact_payload(artifact),
             )
             for artifact in artifacts
         ],
@@ -128,7 +134,7 @@ def list_run_artifacts(run_id: UUID, db: DBSession, _token=Depends(require_api_t
             kind=artifact.kind,
             path=artifact.path,
             mime_type=artifact.mime_type,
-            payload=artifact.payload_json if artifact.kind == "bundle" else None,
+            payload=_artifact_payload(artifact),
         )
         for artifact in artifacts
     ]
@@ -151,5 +157,11 @@ def get_run_artifact(run_id: UUID, artifact_key: str, db: DBSession, _token=Depe
         kind=artifact.kind,
         path=artifact.path,
         mime_type=artifact.mime_type,
-        payload=artifact.payload_json,
+        payload=_artifact_payload(artifact),
     )
+
+
+def _artifact_payload(artifact: RunArtifact) -> object | None:
+    if artifact.kind == "bundle" and isinstance(artifact.payload_json, dict) and "bundle" in artifact.payload_json:
+        return artifact.payload_json["bundle"]
+    return artifact.payload_json

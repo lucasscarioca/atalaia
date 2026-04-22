@@ -148,7 +148,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
             print(outcome)
             return 0
         if hasattr(outcome, "run_id") and not hasattr(outcome, "summary"):
-            print(f"submitted run_id={outcome.run_id}")
+            if args.json:
+                print(json.dumps({"run_id": outcome.run_id, "status": "queued"}, indent=2, sort_keys=True))
+            else:
+                print(f"submitted run_id={outcome.run_id}")
             return 0
         threshold_report = evaluate_run_thresholds(
             outcome,
@@ -191,6 +194,10 @@ def _cmd_check(args: argparse.Namespace) -> int:
     )
 
     comparison_report = None
+    comparison_flags = [args.max_failed_delta, args.max_error_delta, args.min_accuracy_delta]
+    if any(flag is not None for flag in comparison_flags) and not args.against:
+        print("comparison thresholds require --against", file=sys.stderr)
+        return 2
     if args.against:
         reference = client.get_run(args.against)
         comparison_report = evaluate_comparison_thresholds(

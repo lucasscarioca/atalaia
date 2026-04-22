@@ -26,6 +26,7 @@ remote-regression:
     - uv sync --dev
     - |
       set -euo pipefail
+      # Assumes a worker is already running against the remote API.
       tmp_json="$(mktemp)"
       uv run oak-eval run \
         --suite evals.sample:suite \

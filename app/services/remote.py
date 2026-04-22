@@ -179,15 +179,19 @@ def list_runs(db: Session, *, status: str | None = None, project_slug: str | Non
 
 
 def start_run(db: Session, run: Run) -> Run:
-    if run.status == RunStatus.QUEUED.value:
-        run.status = RunStatus.RUNNING.value
-        run.started_at = datetime.now(UTC)
-        db.add(run)
-        db.flush()
+    if run.status != RunStatus.QUEUED.value:
+        raise ValueError(f"run {run.id} cannot start from status {run.status}")
+    run.status = RunStatus.RUNNING.value
+    run.started_at = datetime.now(UTC)
+    db.add(run)
+    db.flush()
     return run
 
 
 def complete_run(db: Session, run: Run, payload: RunComplete) -> Run:
+    if run.status != RunStatus.RUNNING.value:
+        raise ValueError(f"run {run.id} cannot complete from status {run.status}")
+
     db.execute(delete(RunCaseResult).where(RunCaseResult.run_id == run.id))
     db.execute(
         delete(RunArtifact).where(RunArtifact.run_id == run.id, RunArtifact.artifact_key != "suite.bundle")

@@ -30,22 +30,32 @@ Local loop:
 ```bash
 uv run oak-eval run --suite evals.sample:suite
 uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
-uv run oak-eval check --run-id <run-id> --against <reference-run-id>
 ```
 
 Remote loop:
 
 ```bash
-uv run oak-eval run --suite evals.sample:suite --remote --wait
+export OAK_EVAL_API_URL=...
+export OAK_EVAL_TOKEN=...
 uv run oak-eval worker
+uv run oak-eval run --suite evals.sample:suite --remote --wait
+```
+
+Compare a remote run against a reference run:
+
+```bash
+uv run oak-eval check --run-id <run-id> --against <reference-run-id>
 ```
 
 CI loop:
 
 ```bash
 uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
+uv run oak-eval run --suite evals.sample:suite --remote --wait
 uv run oak-eval check --run-id <run-id> --against <reference-run-id>
 ```
+
+`<reference-run-id>` is just a previous successful run ID from the API.
 
 ## Write a suite
 

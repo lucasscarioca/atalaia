@@ -105,6 +105,9 @@ def test_remote_api_can_register_project_suite_and_run(tmp_path) -> None:
     assert start_response.status_code == 200
     assert start_response.json()["status"] == "running"
 
+    duplicate_start = client.post(f"/runs/{run_id}/start", headers=headers)
+    assert duplicate_start.status_code == 409
+
     result = run_local(load_suite("evals.sample:suite"), artifact_dir=tmp_path)
     complete_response = client.post(
         f"/runs/{run_id}/complete",
@@ -149,6 +152,19 @@ def test_remote_api_can_register_project_suite_and_run(tmp_path) -> None:
     assert len(data["cases"]) == 1
     assert len(data["artifacts"]) == 2
     assert any(
-        artifact["payload"] and artifact["payload"]["bundle"]["module_name"] == "evals.sample"
+        artifact["payload"] and artifact["payload"]["module_name"] == "evals.sample"
         for artifact in data["artifacts"]
     )
+
+    duplicate_complete = client.post(
+        f"/runs/{run_id}/complete",
+        headers=headers,
+        json={
+            "status": "completed",
+            "summary": result.summary,
+            "metrics": result.metrics,
+            "cases": [],
+            "artifacts": [],
+        },
+    )
+    assert duplicate_complete.status_code == 409

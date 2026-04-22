@@ -3,12 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
+from pathlib import Path
+import base64
+import io
 import json
+from zipfile import ZipFile
 
 import oak_eval.cli as cli_module
 from oak_eval import ArtifactRef, CaseResult, EvalContext, EvalSuite, RunResult, compare_runs, load_suite, run_local
 from oak_eval.adapters.http import HTTPAdapter
-from oak_eval.bundle import load_suite_from_bundle, package_suite_bundle
+from oak_eval.bundle import load_suite_from_bundle, open_suite_bundle, package_suite_bundle
 from oak_eval.checks import evaluate_run_thresholds
 from oak_eval.cli import main as oak_eval_main
 
@@ -64,6 +68,70 @@ def test_suite_bundle_roundtrip_loads_the_sample_suite() -> None:
 
     assert suite.name == "sample"
     assert len(suite.cases) == 1
+
+
+def test_suite_bundle_supports_top_level_modules(tmp_path, monkeypatch) -> None:
+    module_path = tmp_path / "flat_eval.py"
+    module_path.write_text(
+        "from oak_eval import EvalContext, EvalSuite\n"
+        "suite = EvalSuite(name='flat', adapter=object())\n"
+        "@suite.case(id='flat-case', input={'text': 'x'}, expected={'label': 'ok'})\n"
+        "def check_flat(ctx: EvalContext) -> None:\n"
+        "    assert ctx.case.expected['label'] == 'ok'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    bundle = package_suite_bundle("flat_eval:suite")
+    suite = load_suite_from_bundle(bundle)
+
+    assert suite.name == "flat"
+    assert len(suite.cases) == 1
+
+
+def test_suite_bundle_context_keeps_files_available_during_execution(tmp_path, monkeypatch) -> None:
+    package_dir = tmp_path / "lazy_suite"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text(
+        "from oak_eval import EvalContext, EvalSuite\n"
+        "from pathlib import Path\n"
+        "suite = EvalSuite(name='lazy', adapter=object())\n"
+        "@suite.case(id='reads-data', input={'text': 'x'}, expected={'label': 'ok'})\n"
+        "def check_lazy(ctx: EvalContext) -> None:\n"
+        "    data = Path(__file__).with_name('data.txt').read_text(encoding='utf-8').strip()\n"
+        "    assert data == 'ok'\n",
+        encoding="utf-8",
+    )
+    (package_dir / "data.txt").write_text("ok\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    bundle = package_suite_bundle("lazy_suite:suite")
+    with open_suite_bundle(bundle) as suite:
+        result = run_local(suite, artifact_dir=tmp_path)
+
+    assert result.passed is True
+
+
+def test_bundle_rejects_unsafe_zip_paths(tmp_path) -> None:
+    archive = io.BytesIO()
+    with ZipFile(archive, "w") as zf:
+        zf.writestr("../escape.py", "raise SystemExit('nope')\n")
+        zf.writestr("flat_eval.py", "from oak_eval import EvalSuite\nsuite = EvalSuite(name='flat', adapter=object())\n")
+
+    bundle = {
+        "format": "zip",
+        "module_name": "flat_eval",
+        "object_name": "suite",
+        "package_name": "flat_eval",
+        "archive_base64": base64.b64encode(archive.getvalue()).decode("ascii"),
+    }
+
+    try:
+        load_suite_from_bundle(bundle)
+    except ValueError as exc:
+        assert "unsafe archive paths" in str(exc)
+    else:  # pragma: no cover - defensive
+        raise AssertionError("expected unsafe bundle to be rejected")
 
 
 def test_http_adapter_runs_against_a_live_http_service(tmp_path) -> None:
@@ -160,6 +228,55 @@ def test_cli_run_exits_non_zero_when_thresholds_fail() -> None:
     ])
 
     assert exit_code == 1
+
+
+def test_cli_remote_run_json_emits_submission_payload(monkeypatch, capsys) -> None:
+    class FakeHandle:
+        run_id = "queued-1"
+
+    class FakeClient:
+        def run(self, *args, **kwargs):
+            return FakeHandle()
+
+    monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
+
+    exit_code = oak_eval_main([
+        "run",
+        "--suite",
+        "evals.sample:suite",
+        "--remote",
+        "--json",
+    ])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"run_id": "queued-1", "status": "queued"}
+
+
+def test_cli_check_rejects_comparison_thresholds_without_reference(monkeypatch, capsys) -> None:
+    class FakeClient:
+        def get_run(self, run_id: str) -> RunResult:
+            return RunResult(
+                run_id=run_id,
+                suite_name="demo",
+                summary={"total": 1, "passed": 1, "failed": 0, "error": 0, "invalid_case": 0},
+                metrics={"accuracy": 1.0, "average_latency_ms": 1},
+                cases=[],
+                artifacts=[],
+            )
+
+    monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
+
+    exit_code = oak_eval_main([
+        "check",
+        "--run-id",
+        "current",
+        "--max-failed-delta",
+        "0",
+    ])
+
+    assert exit_code == 2
+    assert "comparison thresholds require --against" in capsys.readouterr().err
 
 
 def test_cli_check_exits_non_zero_for_regression(monkeypatch) -> None:

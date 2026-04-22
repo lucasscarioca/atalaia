@@ -31,6 +31,7 @@ jobs:
         if: env.OAK_EVAL_API_URL != '' && env.OAK_EVAL_TOKEN != '' && env.OAK_EVAL_REFERENCE_RUN_ID != ''
         run: |
           set -euo pipefail
+          # Assumes a worker is already running against the remote API.
           tmp_json="$(mktemp)"
           uv run oak-eval run \
             --suite evals.sample:suite \

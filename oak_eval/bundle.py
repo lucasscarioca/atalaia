@@ -5,10 +5,11 @@ import importlib
 import importlib.util
 import io
 import sys
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Iterator
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
@@ -25,26 +26,36 @@ def _top_level_package_name(module_name: str) -> str:
     return module_name.split(".", 1)[0]
 
 
-def _find_package_root(module_name: str) -> Path:
+def _find_bundle_source(module_name: str) -> tuple[Path, str]:
     package_name = _top_level_package_name(module_name)
     package_spec = importlib.util.find_spec(package_name)
-    if package_spec is None or not package_spec.submodule_search_locations:
-        raise ValueError(f"{module_name} must live inside an importable package")
-    return Path(package_spec.submodule_search_locations[0])
+    if package_spec is not None and package_spec.submodule_search_locations:
+        return Path(package_spec.submodule_search_locations[0]), "package"
+
+    spec = importlib.util.find_spec(module_name)
+    if spec is None:
+        raise ValueError(f"{module_name} is not importable")
+    if spec.origin and spec.origin.endswith(".py"):
+        return Path(spec.origin), "module"
+    raise ValueError(f"{module_name} must resolve to a Python module or package")
 
 
 def package_suite_bundle(suite_spec: str) -> dict[str, Any]:
     module_name, object_name = _split_suite_spec(suite_spec)
-    package_root = _find_package_root(module_name)
+    source_path, source_kind = _find_bundle_source(module_name)
     archive = io.BytesIO()
 
     with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
-        for path in sorted(package_root.rglob("*")):
-            if path.is_dir():
-                continue
-            if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
-                continue
-            zf.write(path, arcname=str(path.relative_to(package_root.parent)))
+        if source_kind == "module":
+            zf.write(source_path, arcname=source_path.name)
+        else:
+            package_root = source_path
+            for path in sorted(package_root.rglob("*")):
+                if path.is_dir():
+                    continue
+                if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
+                    continue
+                zf.write(path, arcname=str(path.relative_to(package_root.parent)))
 
     return {
         "format": "zip",
@@ -81,7 +92,16 @@ def _temporary_module_reload(module_name: str):
             sys.modules[name] = module
 
 
-def load_suite_from_bundle(bundle: dict[str, Any]):
+def _extract_zip_safely(zf: ZipFile, tmpdir: str) -> None:
+    base_path = Path(tmpdir).resolve()
+    for member in zf.infolist():
+        target_path = (base_path / member.filename).resolve()
+        if not target_path.is_relative_to(base_path):
+            raise ValueError("bundle contains unsafe archive paths")
+    zf.extractall(tmpdir)
+
+
+def _load_suite_from_bundle(bundle: dict[str, Any], tmpdir: str):
     from .core import EvalSuite
 
     if bundle.get("format") != "zip":
@@ -97,14 +117,22 @@ def load_suite_from_bundle(bundle: dict[str, Any]):
         raise ValueError("bundle is missing archive_base64")
 
     archive_bytes = base64.b64decode(archive_base64.encode("ascii"))
-    import tempfile
+    with ZipFile(io.BytesIO(archive_bytes)) as zf:
+        _extract_zip_safely(zf, tmpdir)
+    with _temporary_sys_path(tmpdir), _temporary_module_reload(module_name):
+        module = importlib.import_module(module_name)
+        suite = getattr(module, object_name)
+        if not isinstance(suite, EvalSuite):
+            raise TypeError(f"{module_name}:{object_name} did not resolve to an EvalSuite")
+        return suite
 
+
+@contextmanager
+def open_suite_bundle(bundle: dict[str, Any]) -> Iterator[Any]:
     with tempfile.TemporaryDirectory() as tmpdir:
-        with ZipFile(io.BytesIO(archive_bytes)) as zf:
-            zf.extractall(tmpdir)
-        with _temporary_sys_path(tmpdir), _temporary_module_reload(module_name):
-            module = importlib.import_module(module_name)
-            suite = getattr(module, object_name)
-            if not isinstance(suite, EvalSuite):
-                raise TypeError(f"{module_name}:{object_name} did not resolve to an EvalSuite")
-            return suite
+        yield _load_suite_from_bundle(bundle, tmpdir)
+
+
+def load_suite_from_bundle(bundle: dict[str, Any]):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        return _load_suite_from_bundle(bundle, tmpdir)
