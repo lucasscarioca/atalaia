@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from oak_eval import RunResult
+from oak_eval.bundle import package_suite_bundle
 from oak_eval.worker import OakEvalWorker
 
 
@@ -23,7 +24,7 @@ class FakeClient:
             metrics={"accuracy": None, "average_latency_ms": None},
             cases=[],
             artifacts=[],
-            config={"suite_spec": "evals.sample:suite"},
+            config={"suite_spec": "evals.sample:suite", "bundle": package_suite_bundle("evals.sample:suite")},
             status="queued",
         )
 

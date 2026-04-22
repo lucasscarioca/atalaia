@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from .bundle import load_suite_from_bundle
 from .client import OakEvalClient
 from .core import ArtifactRef, CaseResult, RunResult, run_local
 from .loader import load_suite
@@ -33,7 +34,14 @@ class OakEvalWorker:
 
         self.client.start_run(run_id)
         try:
-            suite = load_suite(suite_spec)
+            bundle = run.config.get("bundle")
+            if not (isinstance(bundle, dict) and bundle.get("archive_base64")):
+                artifact = self.client.get_run_artifact(run_id, "suite.bundle")
+                bundle = artifact.get("payload") if isinstance(artifact, dict) else None
+            if isinstance(bundle, dict) and bundle.get("archive_base64"):
+                suite = load_suite_from_bundle(bundle)
+            else:
+                suite = load_suite(suite_spec)
             with TemporaryDirectory() as tmpdir:
                 artifact_dir = Path(tmpdir) / "artifacts"
                 result = run_local(suite, artifact_dir=artifact_dir)

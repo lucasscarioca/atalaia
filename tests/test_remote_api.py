@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from oak_eval import load_suite, run_local
+from oak_eval.bundle import package_suite_bundle
 
 
 engine = create_engine(
@@ -90,6 +91,7 @@ def test_remote_api_can_register_project_suite_and_run(tmp_path) -> None:
                     {"id": "case-1", "input": {"text": "hi"}, "expected": {"text": "hi"}},
                 ],
             },
+            "bundle": package_suite_bundle("evals.sample:suite"),
         },
     )
     assert run_response.status_code == 200
@@ -141,7 +143,12 @@ def test_remote_api_can_register_project_suite_and_run(tmp_path) -> None:
     assert run_detail.status_code == 200
     data = run_detail.json()
     assert data["status"] == "completed"
+    assert data["config"]["bundle"]["format"] == "zip"
     assert data["summary"]["total"] == 1
     assert data["summary"]["passed"] == 1
     assert len(data["cases"]) == 1
-    assert len(data["artifacts"]) == 1
+    assert len(data["artifacts"]) == 2
+    assert any(
+        artifact["payload"] and artifact["payload"]["bundle"]["module_name"] == "evals.sample"
+        for artifact in data["artifacts"]
+    )

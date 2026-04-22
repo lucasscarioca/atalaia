@@ -37,4 +37,4 @@ Or use the Python SDK directly from `oak_eval` and author suites under `evals/`.
 
 - Create a token with `POST /auth/tokens` using `X-Oak-Eval-Admin-Token`
 - Use `Authorization: Bearer <token>` for `/projects` and `/runs`
-- Remote workers poll queued runs and complete them through the API
+- Remote runs upload a zipped suite bundle automatically, and workers poll queued runs and complete them through the API

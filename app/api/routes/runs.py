@@ -105,6 +105,7 @@ def _serialize_run(db: DBSession, run: Run) -> RunRead:
                 kind=artifact.kind,
                 path=artifact.path,
                 mime_type=artifact.mime_type,
+                payload=artifact.payload_json if artifact.kind == "bundle" else None,
             )
             for artifact in artifacts
         ],
@@ -127,6 +128,7 @@ def list_run_artifacts(run_id: UUID, db: DBSession, _token=Depends(require_api_t
             kind=artifact.kind,
             path=artifact.path,
             mime_type=artifact.mime_type,
+            payload=artifact.payload_json if artifact.kind == "bundle" else None,
         )
         for artifact in artifacts
     ]
@@ -149,4 +151,5 @@ def get_run_artifact(run_id: UUID, artifact_key: str, db: DBSession, _token=Depe
         kind=artifact.kind,
         path=artifact.path,
         mime_type=artifact.mime_type,
+        payload=artifact.payload_json,
     )

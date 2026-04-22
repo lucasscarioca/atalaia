@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import oak_eval.cli as cli_module
 from oak_eval import ArtifactRef, CaseResult, EvalContext, EvalSuite, RunResult, compare_runs, load_suite, run_local
+from oak_eval.bundle import load_suite_from_bundle, package_suite_bundle
 from oak_eval.checks import evaluate_run_thresholds
 from oak_eval.cli import main as oak_eval_main
 
@@ -48,6 +49,14 @@ def test_run_local_executes_suite_cases(tmp_path) -> None:
 
 def test_load_suite_can_import_the_repo_sample_suite() -> None:
     suite = load_suite("evals.sample:suite")
+
+    assert suite.name == "sample"
+    assert len(suite.cases) == 1
+
+
+def test_suite_bundle_roundtrip_loads_the_sample_suite() -> None:
+    bundle = package_suite_bundle("evals.sample:suite")
+    suite = load_suite_from_bundle(bundle)
 
     assert suite.name == "sample"
     assert len(suite.cases) == 1

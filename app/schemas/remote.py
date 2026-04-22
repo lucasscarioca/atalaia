@@ -91,9 +91,18 @@ class RemoteSuite(_Model):
     cases: list[RemoteSuiteCase] = Field(default_factory=list)
 
 
+class SuiteBundle(_Model):
+    format: Literal["zip"] = "zip"
+    module_name: str = Field(min_length=1)
+    object_name: str = Field(min_length=1)
+    package_name: str = Field(min_length=1)
+    archive_base64: str = Field(min_length=1)
+
+
 class RunCreate(_Model):
     suite_spec: str = Field(min_length=1)
     suite: RemoteSuite
+    bundle: SuiteBundle
     project_slug: str = Field(default="default", min_length=1, max_length=100)
     reference_run_id: UUID | None = None
 
@@ -158,6 +167,7 @@ class ArtifactRead(_Model):
     kind: str
     path: str | None
     mime_type: str | None
+    payload: Any | None = None
 
 
 class RunRead(_Model):

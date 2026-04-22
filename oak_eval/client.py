@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from .bundle import package_suite_bundle
 from .comparison import compare_runs
 from .core import ArtifactRef, CaseResult, ComparisonResult, EvalSuite, RunResult
 
@@ -64,6 +65,7 @@ class OakEvalClient:
                     for case in suite.cases
                 ],
             },
+            "bundle": package_suite_bundle(suite_spec),
             "reference_run_id": reference_run_id,
         }
         response = self._client.post(f"{self.base_url}/runs", json=payload)
@@ -102,6 +104,11 @@ class OakEvalClient:
         response = self._client.get(f"{self.base_url}/runs/{run_id}")
         response.raise_for_status()
         return self._parse_run(response.json())
+
+    def get_run_artifact(self, run_id: str, artifact_key: str) -> dict[str, Any]:
+        response = self._client.get(f"{self.base_url}/runs/{run_id}/artifacts/{artifact_key}")
+        response.raise_for_status()
+        return dict(response.json())
 
     def wait_for_run(self, run_id: str, timeout: float | None = None) -> RunResult:
         deadline = None if timeout is None else (time() + timeout)

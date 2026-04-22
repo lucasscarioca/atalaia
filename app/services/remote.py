@@ -127,6 +127,7 @@ def create_run(db: Session, payload: RunCreate, *, token: ApiToken | None) -> Ru
         config_json={
             "suite_spec": payload.suite_spec,
             "suite": payload.suite.model_dump(),
+            "bundle": payload.bundle.model_dump(),
             "project_slug": payload.project_slug,
         },
         requested_by_token_id=token.id if token is not None else None,
@@ -153,11 +154,14 @@ def create_run(db: Session, payload: RunCreate, *, token: ApiToken | None) -> Ru
     db.add(
         RunArtifact(
             run_id=run.id,
-            artifact_key="suite.json",
+            artifact_key="suite.bundle",
             kind="bundle",
             path=None,
             mime_type="application/json",
-            payload_json=payload.suite.model_dump(),
+            payload_json={
+                "suite": payload.suite.model_dump(),
+                "bundle": payload.bundle.model_dump(),
+            },
         )
     )
     db.flush()
@@ -185,7 +189,9 @@ def start_run(db: Session, run: Run) -> Run:
 
 def complete_run(db: Session, run: Run, payload: RunComplete) -> Run:
     db.execute(delete(RunCaseResult).where(RunCaseResult.run_id == run.id))
-    db.execute(delete(RunArtifact).where(RunArtifact.run_id == run.id))
+    db.execute(
+        delete(RunArtifact).where(RunArtifact.run_id == run.id, RunArtifact.artifact_key != "suite.bundle")
+    )
 
     case_lookup = {case.case_key: case.id for case in run.suite.cases}
     for case in payload.cases:
