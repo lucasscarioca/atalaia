@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from time import sleep
 from typing import Any
 
+from .client import OakEvalClient
 from .core import run_local
 from .loader import load_suite
+from .worker import OakEvalWorker
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,10 +22,21 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser = subparsers.add_parser("init", help="Create evals/ and .oak-eval/")
     init_parser.add_argument("--force", action="store_true", help="Overwrite the sample suite")
 
-    run_parser = subparsers.add_parser("run", help="Run a suite locally")
+    run_parser = subparsers.add_parser("run", help="Run a suite locally or submit it to a remote server")
     run_parser.add_argument("--suite", required=True, help="Module path to an EvalSuite, e.g. evals.sample:suite")
     run_parser.add_argument("--json", action="store_true", help="Emit JSON output")
     run_parser.add_argument("--artifact-dir", default=".oak-eval", help="Artifact output directory")
+    run_parser.add_argument("--remote", action="store_true", help="Submit the suite to a remote server")
+    run_parser.add_argument("--wait", action="store_true", help="Wait for remote completion")
+    run_parser.add_argument("--api-url", help="Remote API URL")
+    run_parser.add_argument("--token", help="Remote API token")
+    run_parser.add_argument("--project-slug", default="default", help="Remote project slug")
+
+    worker_parser = subparsers.add_parser("worker", help="Poll remote runs and execute queued suites")
+    worker_parser.add_argument("--once", action="store_true", help="Process queued runs once and exit")
+    worker_parser.add_argument("--poll-interval", type=float, default=2.0, help="Seconds between polls")
+    worker_parser.add_argument("--api-url", help="Remote API URL")
+    worker_parser.add_argument("--token", help="Remote API token")
 
     return parser
 
@@ -62,24 +77,77 @@ def _serialize_result(result: Any) -> dict[str, Any]:
         "metrics": result.metrics,
         "cases": [asdict(case) for case in result.cases],
         "artifacts": [asdict(artifact) for artifact in result.artifacts],
+        "config": getattr(result, "config", {}),
+        "status": getattr(result, "status", "completed"),
         "passed": result.passed,
     }
 
 
+def _resolve_client(args: argparse.Namespace) -> OakEvalClient:
+    if args.api_url and args.token:
+        return OakEvalClient(base_url=args.api_url, token=args.token)
+    if args.api_url or args.token:
+        raise RuntimeError("provide both --api-url and --token, or neither to use env vars")
+    return OakEvalClient.from_env()
+
+
+def _print_result(result: Any) -> None:
+    print(f"suite={result.suite_name} run_id={result.run_id}")
+    print(
+        f"total={result.summary['total']} passed={result.summary['passed']} "
+        f"failed={result.summary['failed']} error={result.summary['error']}"
+    )
+    for case in result.cases:
+        print(f"- {case.case_id}: {case.status}")
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     suite = load_suite(args.suite)
+    if args.remote:
+        client = _resolve_client(args)
+        outcome = client.run(
+            suite,
+            suite_spec=args.suite,
+            project_slug=args.project_slug,
+            wait=args.wait,
+        )
+        if isinstance(outcome, str):  # pragma: no cover - defensive
+            print(outcome)
+            return 0
+        if hasattr(outcome, "run_id") and not hasattr(outcome, "summary"):
+            print(f"submitted run_id={outcome.run_id}")
+            return 0
+        if args.json:
+            print(json.dumps(_serialize_result(outcome), indent=2, sort_keys=True))
+        else:
+            _print_result(outcome)
+        return 0 if outcome.passed else 1
+
     result = run_local(suite, artifact_dir=args.artifact_dir)
     if args.json:
         print(json.dumps(_serialize_result(result), indent=2, sort_keys=True))
     else:
-        print(f"suite={result.suite_name} run_id={result.run_id}")
-        print(
-            f"total={result.summary['total']} passed={result.summary['passed']} "
-            f"failed={result.summary['failed']} error={result.summary['error']}"
-        )
-        for case in result.cases:
-            print(f"- {case.case_id}: {case.status}")
+        _print_result(result)
     return 0 if result.passed else 1
+
+
+def _cmd_worker(args: argparse.Namespace) -> int:
+    if args.api_url and args.token:
+        worker = OakEvalWorker(client=OakEvalClient(base_url=args.api_url, token=args.token))
+    elif args.api_url or args.token:
+        raise RuntimeError("provide both --api-url and --token, or neither to use env vars")
+    else:
+        worker = OakEvalWorker.from_env()
+
+    if args.once:
+        processed = worker.process_once()
+        print(f"processed={processed}")
+        return 0
+
+    while True:
+        processed = worker.process_once()
+        print(f"processed={processed}")
+        sleep(args.poll_interval)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_init(args.force)
     if args.command == "run":
         return _cmd_run(args)
+    if args.command == "worker":
+        return _cmd_worker(args)
     raise SystemExit(f"unknown command: {args.command}")
 
 

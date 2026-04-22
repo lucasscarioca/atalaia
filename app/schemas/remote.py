@@ -92,6 +92,7 @@ class RemoteSuite(_Model):
 
 
 class RunCreate(_Model):
+    suite_spec: str = Field(min_length=1)
     suite: RemoteSuite
     project_slug: str = Field(default="default", min_length=1, max_length=100)
     reference_run_id: UUID | None = None
@@ -115,6 +116,43 @@ class RunResultRead(_Model):
     error: str | None
 
 
+class RunCaseWrite(_Model):
+    case_id: str
+    status: Literal["passed", "failed", "error", "invalid_case"]
+    score: float | None
+    expected: dict[str, Any]
+    actual: dict[str, Any] | None
+    latency_ms: int | None
+    error: str | None = None
+
+
+class RunArtifactWrite(_Model):
+    artifact_key: str
+    kind: str
+    path: str | None = None
+    mime_type: str | None = None
+    payload: Any = None
+
+
+class RunComplete(_Model):
+    status: Literal["completed", "failed"]
+    summary: RunSummary
+    metrics: dict[str, Any]
+    cases: list[RunCaseWrite] = Field(default_factory=list)
+    artifacts: list[RunArtifactWrite] = Field(default_factory=list)
+
+
+class RunListRead(_Model):
+    run_id: UUID
+    project_id: UUID
+    suite_id: UUID
+    suite_name: str
+    status: Literal["queued", "running", "completed", "failed"]
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
 class ArtifactRead(_Model):
     artifact_id: str
     kind: str
@@ -129,6 +167,7 @@ class RunRead(_Model):
     suite_name: str
     reference_run_id: UUID | None
     status: Literal["queued", "running", "completed", "failed"]
+    config: dict[str, Any]
     summary: RunSummary
     metrics: dict[str, Any]
     cases: list[RunResultRead]

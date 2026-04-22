@@ -25,6 +25,8 @@ The repo is being reshaped around the new oak-eval direction.
 ```bash
 uv run oak-eval init
 uv run oak-eval run --suite evals.sample:suite
+uv run oak-eval run --suite evals.sample:suite --remote --wait
+uv run oak-eval worker
 ```
 
 Or use the Python SDK directly from `oak_eval` and author suites under `evals/`.
@@ -33,4 +35,4 @@ Or use the Python SDK directly from `oak_eval` and author suites under `evals/`.
 
 - Create a token with `POST /auth/tokens` using `X-Oak-Eval-Admin-Token`
 - Use `Authorization: Bearer <token>` for `/projects` and `/runs`
-- Remote execution is being built out next
+- Remote workers poll queued runs and complete them through the API

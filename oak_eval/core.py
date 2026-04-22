@@ -112,6 +112,8 @@ class RunResult:
     metrics: dict[str, Any]
     cases: list[CaseResult]
     artifacts: list[ArtifactRef]
+    config: dict[str, Any] = field(default_factory=dict)
+    status: str = "completed"
 
     @property
     def passed(self) -> bool:
@@ -294,4 +296,6 @@ def run_local(
         metrics=metrics,
         cases=case_results,
         artifacts=artifacts,
+        config=dict(run_context.metadata),
+        status="completed",
     )

@@ -3,14 +3,13 @@ from __future__ import annotations
 import hashlib
 import secrets
 from datetime import UTC, datetime
-from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.enums import ResultStatus, RunStatus
 from app.models.remote import ApiToken, EvalCase, EvalSuite, Project, Run, RunArtifact, RunCaseResult
-from app.schemas.remote import CaseCreate, RemoteSuite, RunCreate, SuiteCreate
+from app.schemas.remote import CaseCreate, RunComplete, RunCreate, SuiteCreate
 
 
 def slugify(value: str) -> str:
@@ -125,7 +124,11 @@ def create_run(db: Session, payload: RunCreate, *, token: ApiToken | None) -> Ru
         status=RunStatus.QUEUED.value,
         summary_json=summary,
         metrics_json={"accuracy": None, "average_latency_ms": None},
-        config_json={"suite": payload.suite.model_dump(), "project_slug": payload.project_slug},
+        config_json={
+            "suite_spec": payload.suite_spec,
+            "suite": payload.suite.model_dump(),
+            "project_slug": payload.project_slug,
+        },
         requested_by_token_id=token.id if token is not None else None,
     )
     db.add(run)
@@ -157,6 +160,67 @@ def create_run(db: Session, payload: RunCreate, *, token: ApiToken | None) -> Ru
             payload_json=payload.suite.model_dump(),
         )
     )
+    db.flush()
+    return run
+
+
+def list_runs(db: Session, *, status: str | None = None, project_slug: str | None = None) -> list[Run]:
+    query = select(Run).join(Project)
+    if status is not None:
+        query = query.where(Run.status == status)
+    if project_slug is not None:
+        query = query.where(Project.slug == project_slug)
+    query = query.order_by(Run.created_at.desc())
+    return list(db.scalars(query).all())
+
+
+def start_run(db: Session, run: Run) -> Run:
+    if run.status == RunStatus.QUEUED.value:
+        run.status = RunStatus.RUNNING.value
+        run.started_at = datetime.now(UTC)
+        db.add(run)
+        db.flush()
+    return run
+
+
+def complete_run(db: Session, run: Run, payload: RunComplete) -> Run:
+    db.execute(delete(RunCaseResult).where(RunCaseResult.run_id == run.id))
+    db.execute(delete(RunArtifact).where(RunArtifact.run_id == run.id))
+
+    case_lookup = {case.case_key: case.id for case in run.suite.cases}
+    for case in payload.cases:
+        db.add(
+            RunCaseResult(
+                run_id=run.id,
+                case_id=case_lookup.get(case.case_id),
+                case_key=case.case_id,
+                status=ResultStatus(case.status).value,
+                score=case.score,
+                expected_json=case.expected,
+                actual_json=case.actual,
+                latency_ms=case.latency_ms,
+                error_type="execution_error" if case.status in {"error", "failed"} else None,
+                error_message=case.error,
+            )
+        )
+
+    for artifact in payload.artifacts:
+        db.add(
+            RunArtifact(
+                run_id=run.id,
+                artifact_key=artifact.artifact_key,
+                kind=artifact.kind,
+                path=artifact.path,
+                mime_type=artifact.mime_type,
+                payload_json=artifact.payload,
+            )
+        )
+
+    run.status = payload.status
+    run.summary_json = payload.summary.model_dump()
+    run.metrics_json = payload.metrics
+    run.completed_at = datetime.now(UTC)
+    db.add(run)
     db.flush()
     return run
 

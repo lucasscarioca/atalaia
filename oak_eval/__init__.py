@@ -1,5 +1,6 @@
 from .adapters.http import HTTPAdapter
 from .client import OakEvalClient, RunHandle
+from .worker import OakEvalWorker
 from .comparison import compare_runs
 from .core import (
     ArtifactRef,
@@ -25,6 +26,7 @@ __all__ = [
     "EvalSuite",
     "HTTPAdapter",
     "OakEvalClient",
+    "OakEvalWorker",
     "RunContext",
     "RunHandle",
     "RunResult",

@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from oak_eval import load_suite, run_local
 
 
 engine = create_engine(
@@ -49,7 +50,7 @@ def test_remote_api_requires_token() -> None:
     assert response.status_code == 401
 
 
-def test_remote_api_can_register_project_suite_and_run() -> None:
+def test_remote_api_can_register_project_suite_and_run(tmp_path) -> None:
     token = _create_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -79,6 +80,7 @@ def test_remote_api_can_register_project_suite_and_run() -> None:
         "/runs",
         headers=headers,
         json={
+            "suite_spec": "evals.sample:suite",
             "project_slug": "demo",
             "suite": {
                 "name": "Sample Suite",
@@ -93,11 +95,53 @@ def test_remote_api_can_register_project_suite_and_run() -> None:
     assert run_response.status_code == 200
     run_id = run_response.json()["run_id"]
 
+    queue_response = client.get("/runs", headers=headers, params={"status_filter": "queued"})
+    assert queue_response.status_code == 200
+    assert queue_response.json()[0]["run_id"] == run_id
+
+    start_response = client.post(f"/runs/{run_id}/start", headers=headers)
+    assert start_response.status_code == 200
+    assert start_response.json()["status"] == "running"
+
+    result = run_local(load_suite("evals.sample:suite"), artifact_dir=tmp_path)
+    complete_response = client.post(
+        f"/runs/{run_id}/complete",
+        headers=headers,
+        json={
+            "status": "completed",
+            "summary": result.summary,
+            "metrics": result.metrics,
+            "cases": [
+                {
+                    "case_id": case.case_id,
+                    "status": case.status,
+                    "score": case.score,
+                    "expected": case.expected,
+                    "actual": case.actual,
+                    "latency_ms": case.latency_ms,
+                    "error": case.error,
+                }
+                for case in result.cases
+            ],
+            "artifacts": [
+                {
+                    "artifact_key": artifact.artifact_id.split(":", 1)[-1],
+                    "kind": artifact.kind,
+                    "path": artifact.path,
+                    "mime_type": artifact.mime_type,
+                    "payload": {"summary": result.summary, "metrics": result.metrics},
+                }
+                for artifact in result.artifacts
+            ],
+        },
+    )
+    assert complete_response.status_code == 200
+
     run_detail = client.get(f"/runs/{run_id}", headers=headers)
     assert run_detail.status_code == 200
     data = run_detail.json()
-    assert data["status"] == "queued"
+    assert data["status"] == "completed"
     assert data["summary"]["total"] == 1
-    assert data["summary"]["invalid_case"] == 1
+    assert data["summary"]["passed"] == 1
     assert len(data["cases"]) == 1
     assert len(data["artifacts"]) == 1
