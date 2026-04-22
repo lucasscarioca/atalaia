@@ -25,7 +25,9 @@ The repo is being reshaped around the new oak-eval direction.
 ```bash
 uv run oak-eval init
 uv run oak-eval run --suite evals.sample:suite
+uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
 uv run oak-eval run --suite evals.sample:suite --remote --wait
+uv run oak-eval check --run-id <run-id> --against <reference-run-id>
 uv run oak-eval worker
 ```
 

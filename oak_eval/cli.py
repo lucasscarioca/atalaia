@@ -9,6 +9,7 @@ from pathlib import Path
 from time import sleep
 from typing import Any
 
+from .checks import ThresholdReport, evaluate_comparison_thresholds, evaluate_run_thresholds
 from .client import OakEvalClient
 from .core import run_local
 from .loader import load_suite
@@ -31,6 +32,20 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--api-url", help="Remote API URL")
     run_parser.add_argument("--token", help="Remote API token")
     run_parser.add_argument("--project-slug", default="default", help="Remote project slug")
+    run_parser.add_argument("--min-pass-rate", type=float, help="Fail if pass rate drops below this value")
+    run_parser.add_argument("--min-accuracy", type=float, help="Fail if accuracy drops below this value")
+
+    check_parser = subparsers.add_parser("check", help="Evaluate thresholds for a completed run")
+    check_parser.add_argument("--run-id", required=True, help="Current run ID to check")
+    check_parser.add_argument("--against", help="Reference run ID to compare against")
+    check_parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    check_parser.add_argument("--api-url", help="Remote API URL")
+    check_parser.add_argument("--token", help="Remote API token")
+    check_parser.add_argument("--min-pass-rate", type=float, help="Fail if pass rate drops below this value")
+    check_parser.add_argument("--min-accuracy", type=float, help="Fail if accuracy drops below this value")
+    check_parser.add_argument("--max-failed-delta", type=int, help="Fail if failed cases increase above this value")
+    check_parser.add_argument("--max-error-delta", type=int, help="Fail if errors increase above this value")
+    check_parser.add_argument("--min-accuracy-delta", type=float, help="Fail if accuracy delta drops below this value")
 
     worker_parser = subparsers.add_parser("worker", help="Poll remote runs and execute queued suites")
     worker_parser.add_argument("--once", action="store_true", help="Process queued runs once and exit")
@@ -83,6 +98,14 @@ def _serialize_result(result: Any) -> dict[str, Any]:
     }
 
 
+def _serialize_threshold_report(report: Any) -> dict[str, Any]:
+    return {
+        "passed": report.passed,
+        "reasons": report.reasons,
+        "details": report.details,
+    }
+
+
 def _resolve_client(args: argparse.Namespace) -> OakEvalClient:
     if args.api_url and args.token:
         return OakEvalClient(base_url=args.api_url, token=args.token)
@@ -101,15 +124,25 @@ def _print_result(result: Any) -> None:
         print(f"- {case.case_id}: {case.status}")
 
 
+def _print_threshold_report(report: Any) -> None:
+    if report.passed:
+        print("thresholds=passed")
+        return
+    print("thresholds=failed")
+    for reason in report.reasons:
+        print(f"! {reason}")
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     suite = load_suite(args.suite)
     if args.remote:
         client = _resolve_client(args)
+        wait_for_result = args.wait or args.min_pass_rate is not None or args.min_accuracy is not None
         outcome = client.run(
             suite,
             suite_spec=args.suite,
             project_slug=args.project_slug,
-            wait=args.wait,
+            wait=wait_for_result,
         )
         if isinstance(outcome, str):  # pragma: no cover - defensive
             print(outcome)
@@ -117,18 +150,83 @@ def _cmd_run(args: argparse.Namespace) -> int:
         if hasattr(outcome, "run_id") and not hasattr(outcome, "summary"):
             print(f"submitted run_id={outcome.run_id}")
             return 0
+        threshold_report = evaluate_run_thresholds(
+            outcome,
+            min_pass_rate=args.min_pass_rate,
+            min_accuracy=args.min_accuracy,
+        )
         if args.json:
-            print(json.dumps(_serialize_result(outcome), indent=2, sort_keys=True))
+            payload = _serialize_result(outcome)
+            payload["thresholds"] = _serialize_threshold_report(threshold_report)
+            print(json.dumps(payload, indent=2, sort_keys=True))
         else:
             _print_result(outcome)
-        return 0 if outcome.passed else 1
+            _print_threshold_report(threshold_report)
+        return 0 if outcome.passed and threshold_report.passed else 1
 
     result = run_local(suite, artifact_dir=args.artifact_dir)
+    threshold_report = evaluate_run_thresholds(
+        result,
+        min_pass_rate=args.min_pass_rate,
+        min_accuracy=args.min_accuracy,
+    )
     if args.json:
-        print(json.dumps(_serialize_result(result), indent=2, sort_keys=True))
+        payload = _serialize_result(result)
+        payload["thresholds"] = _serialize_threshold_report(threshold_report)
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         _print_result(result)
-    return 0 if result.passed else 1
+        _print_threshold_report(threshold_report)
+    return 0 if result.passed and threshold_report.passed else 1
+
+
+def _cmd_check(args: argparse.Namespace) -> int:
+    client = _resolve_client(args)
+    current = client.get_run(args.run_id)
+
+    threshold_report = evaluate_run_thresholds(
+        current,
+        min_pass_rate=args.min_pass_rate,
+        min_accuracy=args.min_accuracy,
+    )
+
+    comparison_report = None
+    if args.against:
+        reference = client.get_run(args.against)
+        comparison_report = evaluate_comparison_thresholds(
+            current,
+            reference,
+            max_failed_delta=args.max_failed_delta,
+            max_error_delta=args.max_error_delta,
+            min_accuracy_delta=args.min_accuracy_delta,
+        )
+        threshold_report = ThresholdReport(
+            passed=threshold_report.passed and comparison_report.passed,
+            reasons=[*threshold_report.reasons, *comparison_report.reasons],
+            details={
+                **threshold_report.details,
+                "comparison": comparison_report.details,
+            },
+        )
+
+    if args.json:
+        payload = _serialize_result(current)
+        payload["thresholds"] = _serialize_threshold_report(threshold_report)
+        if comparison_report is not None:
+            payload["comparison"] = comparison_report.details
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        _print_result(current)
+        if comparison_report is not None:
+            print(f"against={args.against}")
+            print(
+                f"failed_delta={comparison_report.details.get('failed_delta', 0)} "
+                f"error_delta={comparison_report.details.get('error_delta', 0)}"
+            )
+            if "accuracy_delta" in comparison_report.details:
+                print(f"accuracy_delta={comparison_report.details['accuracy_delta']}")
+        _print_threshold_report(threshold_report)
+    return 0 if threshold_report.passed else 1
 
 
 def _cmd_worker(args: argparse.Namespace) -> int:
@@ -158,6 +256,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_init(args.force)
     if args.command == "run":
         return _cmd_run(args)
+    if args.command == "check":
+        return _cmd_check(args)
     if args.command == "worker":
         return _cmd_worker(args)
     raise SystemExit(f"unknown command: {args.command}")
