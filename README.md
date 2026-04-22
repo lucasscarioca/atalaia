@@ -23,6 +23,30 @@ uv run oak-eval run --suite evals.sample:suite
 
 That gives you a working sample suite in `evals/sample.py`.
 
+## Demo path
+
+Local loop:
+
+```bash
+uv run oak-eval run --suite evals.sample:suite
+uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
+uv run oak-eval check --run-id <run-id> --against <reference-run-id>
+```
+
+Remote loop:
+
+```bash
+uv run oak-eval run --suite evals.sample:suite --remote --wait
+uv run oak-eval worker
+```
+
+CI loop:
+
+```bash
+uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
+uv run oak-eval check --run-id <run-id> --against <reference-run-id>
+```
+
 ## Write a suite
 
 ```python
