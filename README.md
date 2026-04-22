@@ -40,6 +40,7 @@ The SDK also includes `oak_eval.adapters.http.HTTPAdapter` for suites that check
 - Create a token with `POST /auth/tokens` using `X-Oak-Eval-Admin-Token`
 - Use `Authorization: Bearer <token>` for `/projects` and `/runs`
 - Remote runs upload a zipped suite bundle automatically, and workers poll queued runs and complete them through the API
+- The full remote loop works end to end with `oak-eval run --remote --wait` plus `oak-eval worker`
 
 ## CI examples
 

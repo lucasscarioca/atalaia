@@ -8,7 +8,6 @@ from typing import Any
 from .bundle import load_suite_from_bundle
 from .client import OakEvalClient
 from .core import ArtifactRef, CaseResult, RunResult, run_local
-from .loader import load_suite
 
 
 @dataclass(slots=True)
@@ -39,9 +38,12 @@ class OakEvalWorker:
                 artifact = self.client.get_run_artifact(run_id, "suite.bundle")
                 bundle = artifact.get("payload") if isinstance(artifact, dict) else None
             if isinstance(bundle, dict) and bundle.get("archive_base64"):
-                suite = load_suite_from_bundle(bundle)
+                try:
+                    suite = load_suite_from_bundle(bundle)
+                except Exception as exc:
+                    raise RuntimeError(f"failed to load suite bundle for run {run_id}: {exc}") from exc
             else:
-                suite = load_suite(suite_spec)
+                raise RuntimeError(f"run {run_id} is missing a usable suite bundle")
             with TemporaryDirectory() as tmpdir:
                 artifact_dir = Path(tmpdir) / "artifacts"
                 result = run_local(suite, artifact_dir=artifact_dir)

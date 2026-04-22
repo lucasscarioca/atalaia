@@ -25,9 +25,11 @@ class RunHandle:
 
 
 class OakEvalClient:
-    def __init__(self, *, base_url: str, token: str) -> None:
+    def __init__(self, *, base_url: str, token: str, client: Any | None = None) -> None:
         self.base_url = base_url.rstrip("/")
-        self._client = httpx.Client(headers={"Authorization": f"Bearer {token}"})
+        self._auth_header = {"Authorization": f"Bearer {token}"}
+        self._client = client or httpx.Client(headers=self._auth_header)
+        self._owns_client = client is None
 
     @classmethod
     def from_env(cls) -> "OakEvalClient":
@@ -68,7 +70,7 @@ class OakEvalClient:
             "bundle": package_suite_bundle(suite_spec),
             "reference_run_id": reference_run_id,
         }
-        response = self._client.post(f"{self.base_url}/runs", json=payload)
+        response = self._request("POST", "/runs", json=payload)
         response.raise_for_status()
         data = response.json()
         run_id = str(data["run_id"])
@@ -83,30 +85,31 @@ class OakEvalClient:
             params["status_filter"] = status
         if project_slug is not None:
             params["project_slug"] = project_slug
-        response = self._client.get(f"{self.base_url}/runs", params=params)
+        response = self._request("GET", "/runs", params=params)
         response.raise_for_status()
         return [str(item["run_id"]) for item in response.json()]
 
     def start_run(self, run_id: str) -> RunResult:
-        response = self._client.post(f"{self.base_url}/runs/{run_id}/start")
+        response = self._request("POST", f"/runs/{run_id}/start")
         response.raise_for_status()
         return self._parse_run(response.json())
 
     def complete_run(self, run_id: str, result: RunResult) -> RunResult:
-        response = self._client.post(
-            f"{self.base_url}/runs/{run_id}/complete",
+        response = self._request(
+            "POST",
+            f"/runs/{run_id}/complete",
             json=self._serialize_run_completion(result),
         )
         response.raise_for_status()
         return self._parse_run(response.json())
 
     def get_run(self, run_id: str) -> RunResult:
-        response = self._client.get(f"{self.base_url}/runs/{run_id}")
+        response = self._request("GET", f"/runs/{run_id}")
         response.raise_for_status()
         return self._parse_run(response.json())
 
     def get_run_artifact(self, run_id: str, artifact_key: str) -> dict[str, Any]:
-        response = self._client.get(f"{self.base_url}/runs/{run_id}/artifacts/{artifact_key}")
+        response = self._request("GET", f"/runs/{run_id}/artifacts/{artifact_key}")
         response.raise_for_status()
         return dict(response.json())
 
@@ -126,7 +129,13 @@ class OakEvalClient:
         return compare_runs(current=current, reference=reference)
 
     def close(self) -> None:
-        self._client.close()
+        if self._owns_client:
+            self._client.close()
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers.update(self._auth_header)
+        return self._client.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
 
     def _parse_run(self, data: dict[str, Any]) -> RunResult:
         return RunResult(
