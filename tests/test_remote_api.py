@@ -51,6 +51,22 @@ def test_remote_api_requires_token() -> None:
     assert response.status_code == 401
 
 
+def test_remote_api_rejects_invalid_auth_headers() -> None:
+    bad_scheme = client.post(
+        "/projects",
+        headers={"Authorization": "Token abc"},
+        json={"slug": "demo", "name": "Demo"},
+    )
+    assert bad_scheme.status_code == 401
+
+    invalid_token = client.post(
+        "/projects",
+        headers={"Authorization": "Bearer not-a-real-token"},
+        json={"slug": "demo", "name": "Demo"},
+    )
+    assert invalid_token.status_code == 401
+
+
 def test_remote_api_can_register_project_suite_and_run(tmp_path) -> None:
     token = _create_token()
     headers = {"Authorization": f"Bearer {token}"}
@@ -150,10 +166,12 @@ def test_remote_api_can_register_project_suite_and_run(tmp_path) -> None:
     assert data["summary"]["total"] == 1
     assert data["summary"]["passed"] == 1
     assert len(data["cases"]) == 1
-    assert len(data["artifacts"]) == 2
+    artifact_keys = {artifact["artifact_id"].split(":", 1)[-1] for artifact in data["artifacts"]}
+    assert {"suite.bundle", "summary.json"}.issubset(artifact_keys)
     assert any(
         artifact["payload"] and artifact["payload"]["module_name"] == "evals.sample"
         for artifact in data["artifacts"]
+        if artifact["kind"] == "bundle"
     )
 
     duplicate_complete = client.post(

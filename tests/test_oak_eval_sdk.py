@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from pathlib import Path
 import base64
+import binascii
 import io
 import json
 from zipfile import ZipFile
@@ -13,7 +14,8 @@ import oak_eval.cli as cli_module
 from oak_eval import ArtifactRef, CaseResult, EvalContext, EvalSuite, RunResult, compare_runs, load_suite, run_local
 from oak_eval.adapters.http import HTTPAdapter
 from oak_eval.bundle import load_suite_from_bundle, open_suite_bundle, package_suite_bundle
-from oak_eval.checks import evaluate_run_thresholds
+from oak_eval.checks import evaluate_comparison_thresholds, evaluate_run_thresholds
+from oak_eval.client import OakEvalClient
 from oak_eval.cli import main as oak_eval_main
 
 
@@ -134,6 +136,68 @@ def test_bundle_rejects_unsafe_zip_paths(tmp_path) -> None:
         raise AssertionError("expected unsafe bundle to be rejected")
 
 
+def test_load_suite_from_bundle_rejects_malformed_payloads() -> None:
+    malformed_bundles = [
+        ({"format": "tar"}, "unsupported suite bundle format"),
+        (
+            {
+                "format": "zip",
+                "module_name": "flat_eval",
+                "object_name": "suite",
+                "package_name": "flat_eval",
+            },
+            "bundle is missing archive_base64",
+        ),
+    ]
+    for bundle, message in malformed_bundles:
+        try:
+            load_suite_from_bundle(bundle)
+        except ValueError as exc:
+            assert message in str(exc)
+        else:  # pragma: no cover - defensive
+            raise AssertionError(f"expected {message!r}")
+
+    try:
+        load_suite_from_bundle(
+            {
+                "format": "zip",
+                "module_name": "flat_eval",
+                "object_name": "suite",
+                "package_name": "flat_eval",
+                "archive_base64": "not-base64!!",
+            }
+        )
+    except Exception as exc:
+        assert isinstance(exc, (binascii.Error, ValueError))
+    else:  # pragma: no cover - defensive
+        raise AssertionError("expected malformed base64 bundle to fail")
+
+
+def test_wait_for_run_polls_until_completion(monkeypatch) -> None:
+    client = OakEvalClient(base_url="http://example.test", token="token", client=object())
+    statuses = ["queued", "running", "completed"]
+
+    def fake_get_run(run_id: str) -> RunResult:
+        status = statuses.pop(0)
+        return RunResult(
+            run_id=run_id,
+            suite_name="demo",
+            summary={"total": 1, "passed": 1, "failed": 0, "error": 0, "invalid_case": 0},
+            metrics={"accuracy": 1.0, "average_latency_ms": 1},
+            cases=[],
+            artifacts=[],
+            status=status,
+        )
+
+    monkeypatch.setattr(client, "get_run", fake_get_run)
+    monkeypatch.setattr("oak_eval.client.sleep", lambda _: None)
+
+    result = client.wait_for_run("run-1", timeout=1)
+
+    assert result.status == "completed"
+    assert statuses == []
+
+
 def test_http_adapter_runs_against_a_live_http_service(tmp_path) -> None:
     received_requests: list[dict[str, object]] = []
 
@@ -200,6 +264,116 @@ def test_compare_runs_reports_case_and_summary_deltas(tmp_path) -> None:
     assert comparison.reference_run_id == reference.run_id
     assert comparison.summary_delta == {"error": 0, "failed": 0, "invalid_case": 0, "passed": 0, "total": 0}
     assert {delta.case_id for delta in comparison.case_deltas} == {"pass", "fail"}
+
+
+def test_evaluate_run_thresholds_treats_empty_runs_as_full_pass_rate() -> None:
+    result = RunResult(
+        run_id="empty",
+        suite_name="demo",
+        summary={"total": 0, "passed": 0, "failed": 0, "error": 0, "invalid_case": 0},
+        metrics={"accuracy": None, "average_latency_ms": None},
+        cases=[],
+        artifacts=[],
+    )
+
+    report = evaluate_run_thresholds(result, min_pass_rate=1.0)
+
+    assert report.passed is True
+    assert report.details["pass_rate"] == 1.0
+
+
+def test_evaluate_run_thresholds_flags_missing_accuracy_metric() -> None:
+    result = RunResult(
+        run_id="missing-accuracy",
+        suite_name="demo",
+        summary={"total": 1, "passed": 1, "failed": 0, "error": 0, "invalid_case": 0},
+        metrics={"accuracy": None, "average_latency_ms": None},
+        cases=[],
+        artifacts=[],
+    )
+
+    report = evaluate_run_thresholds(result, min_accuracy=0.5)
+
+    assert report.passed is False
+    assert "unavailable" in report.reasons[0]
+
+
+def test_evaluate_comparison_thresholds_cover_boundaries_and_details() -> None:
+    current = RunResult(
+        run_id="current",
+        suite_name="demo",
+        summary={"total": 1, "passed": 0, "failed": 1, "error": 0, "invalid_case": 0},
+        metrics={"accuracy": 0.5, "average_latency_ms": 1},
+        cases=[
+            CaseResult(
+                case_id="case-1",
+                status="failed",
+                score=0.5,
+                expected={"label": "ok"},
+                actual={"label": "bad"},
+                latency_ms=1,
+                error="boom",
+            )
+        ],
+        artifacts=[],
+    )
+    reference = RunResult(
+        run_id="reference",
+        suite_name="demo",
+        summary={"total": 1, "passed": 1, "failed": 0, "error": 0, "invalid_case": 0},
+        metrics={"accuracy": 0.5, "average_latency_ms": 1},
+        cases=[
+            CaseResult(
+                case_id="case-1",
+                status="passed",
+                score=0.5,
+                expected={"label": "ok"},
+                actual=None,
+                latency_ms=1,
+                error=None,
+            )
+        ],
+        artifacts=[],
+    )
+
+    report = evaluate_comparison_thresholds(
+        current,
+        reference,
+        max_failed_delta=1,
+        max_error_delta=0,
+        min_accuracy_delta=0.0,
+    )
+
+    assert report.passed is True
+    assert report.details["failed_delta"] == 1
+    assert report.details["error_delta"] == 0
+    assert report.details["accuracy_delta"] == 0.0
+    assert report.details["case_deltas"][0]["current_status"] == "failed"
+    assert report.details["case_deltas"][0]["reference_status"] == "passed"
+
+
+def test_evaluate_comparison_thresholds_fail_when_accuracy_is_unavailable() -> None:
+    current = RunResult(
+        run_id="current",
+        suite_name="demo",
+        summary={"total": 1, "passed": 1, "failed": 0, "error": 0, "invalid_case": 0},
+        metrics={"accuracy": None, "average_latency_ms": 1},
+        cases=[],
+        artifacts=[],
+    )
+    reference = RunResult(
+        run_id="reference",
+        suite_name="demo",
+        summary={"total": 1, "passed": 1, "failed": 0, "error": 0, "invalid_case": 0},
+        metrics={"accuracy": 1.0, "average_latency_ms": 1},
+        cases=[],
+        artifacts=[],
+    )
+
+    report = evaluate_comparison_thresholds(current, reference, min_accuracy_delta=0.0)
+
+    assert report.passed is False
+    assert "unavailable" in report.reasons[0]
 
 
 def test_threshold_evaluation_can_fail_a_passing_run(tmp_path) -> None:

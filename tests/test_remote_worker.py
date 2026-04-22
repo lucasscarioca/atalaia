@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from dataclasses import dataclass, field
+from threading import Thread
+from time import sleep
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -51,6 +53,7 @@ def _create_token() -> str:
 @dataclass
 class FakeClient:
     completed: list[RunResult] = field(default_factory=list)
+    started: list[str] = field(default_factory=list)
 
     def list_runs(self, *, status: str | None = None, project_slug: str | None = None) -> list[str]:
         assert status == "queued"
@@ -70,6 +73,7 @@ class FakeClient:
         )
 
     def start_run(self, run_id: str) -> RunResult:
+        self.started.append(run_id)
         return self.get_run(run_id)
 
     def complete_run(self, run_id: str, result: RunResult) -> RunResult:
@@ -83,6 +87,7 @@ def test_worker_processes_queued_runs() -> None:
     processed = worker.process_once()
 
     assert processed == 1
+    assert worker.client.started == ["run-1"]
     assert len(worker.client.completed) == 1
     assert worker.client.completed[0].status == "completed"
     assert worker.client.completed[0].cases[0].status == "passed"
@@ -100,13 +105,20 @@ def test_remote_run_waits_for_worker_completion(tmp_path) -> None:
     assert handle.run_id
     assert api_client.get_run(handle.run_id).status == "queued"
 
-    processed = worker.process_once()
-    assert processed == 1
+    def process_worker() -> None:
+        sleep(0.1)
+        worker.process_once()
+
+    thread = Thread(target=process_worker, daemon=True)
+    thread.start()
 
     result = handle.wait(timeout=5)
+    thread.join(timeout=5)
+
     assert result.status == "completed"
     assert result.passed is True
     assert result.summary["passed"] == 1
+    assert not thread.is_alive()
 
 
 def test_worker_can_load_bundle_from_artifact_when_config_is_missing() -> None:
@@ -135,7 +147,7 @@ def test_worker_can_load_bundle_from_artifact_when_config_is_missing() -> None:
 
         def get_run_artifact(self, run_id: str, artifact_key: str) -> dict[str, object]:
             assert artifact_key == "suite.bundle"
-            return {"payload": {"bundle": package_suite_bundle("evals.sample:suite")}}
+            return {"payload": package_suite_bundle("evals.sample:suite")}
 
         def complete_run(self, run_id: str, result: RunResult) -> RunResult:
             self.completed.append(result)
