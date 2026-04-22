@@ -2,25 +2,16 @@
 
 Git-native, self-hosted evals-as-code for AI agents.
 
-oak-eval lets you define eval suites in Git, run them locally for fast feedback, and execute them remotely on your own server for CI gating and shared regression checks.
+Define suites in Git, run them locally for fast feedback, or run them remotely on your own server for CI gating and regression checks.
 
-## Core concepts
+## What you get
 
-- **Project** — a repository or workspace that owns suites and runs
-- **Eval Suite** — Python code that defines cases and checks
-- **Case** — one input / expected pair plus the assertion logic that validates it
-- **Run** — one execution of a suite
-- **Adapter** — the interface a case uses to call a model, service, or HTTP target
-- **Artifact** — files or payloads produced by a run
-- **Reference run** — a prior run used for comparison and regression checks
-
-## Repo layout
-
-- `evals/` — suite code you author and review in Git
-- `.oak-eval/` — local tool state and generated artifacts
-- `oak_eval/` — Python SDK, CLI, worker, and adapters
-- `app/` — self-hosted API and persistence layer
-- `docs/` — public docs for users of the project
+- Suites live under `evals/`
+- Local state and artifacts live under `.oak-eval/`
+- Python SDK first, CLI on top
+- Local runs, remote runs, reference-run comparisons
+- Threshold checks with non-zero exits
+- HTTP adapter for live services
 
 ## Quickstart
 
@@ -30,19 +21,9 @@ uv run oak-eval init
 uv run oak-eval run --suite evals.sample:suite
 ```
 
-That gives you a local sample suite you can edit under `evals/sample.py`.
+That gives you a working sample suite in `evals/sample.py`.
 
-## Local workflow
-
-Run a suite locally for fast feedback:
-
-```bash
-uv run oak-eval run --suite evals.sample:suite
-uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
-uv run oak-eval check --run-id <run-id> --against <reference-run-id>
-```
-
-Author suites in Python:
+## Write a suite
 
 ```python
 from oak_eval import EvalContext, EvalSuite
@@ -55,24 +36,26 @@ def check_case(ctx: EvalContext) -> None:
     assert actual["label"] == ctx.case.expected["label"]
 ```
 
-## Remote workflow
+## Run it
 
-Submit a suite to your self-hosted API, then let a worker process queued runs:
+Local:
+
+```bash
+uv run oak-eval run --suite evals.sample:suite
+uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
+uv run oak-eval check --run-id <run-id> --against <reference-run-id>
+```
+
+Remote:
 
 ```bash
 uv run oak-eval run --suite evals.sample:suite --remote --wait
 uv run oak-eval worker
 ```
 
-Remote runs automatically package and upload the suite bundle. The worker pulls the queued run, loads the bundle, executes the suite locally, and posts the results back to the API.
-
-## HTTP adapter
-
-For suites that exercise a live service, use `oak_eval.adapters.http.HTTPAdapter`.
+Remote runs upload the suite bundle automatically. The worker picks up queued runs, loads the bundle, runs the suite, and posts results back.
 
 ## CI examples
-
-The repo includes minimal examples for:
 
 - GitHub Actions: `.github/workflows/oak-eval-ci-example.yml`
 - GitLab CI: `.gitlab-ci.yml.example`
@@ -86,4 +69,4 @@ Both examples run the local suite and can optionally run a remote regression che
 
 ## Public docs
 
-Start at `docs/README.md` for the public documentation index.
+Start at `docs/README.md` if you want a tiny docs index.

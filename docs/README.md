@@ -1,13 +1,10 @@
-# Public docs
+# Docs
 
-This directory contains the user-facing docs for oak-eval.
+Start with the [Quickstart](./quickstart.md).
 
-## Start here
+If you want the shortest path, just read the main [README](../README.md) and run:
 
-- [Quickstart](./quickstart.md)
-
-## If you want the shortest path
-
-- Read the main [README](../README.md)
-- Run `uv run oak-eval init`
-- Run `uv run oak-eval run --suite evals.sample:suite`
+```bash
+uv run oak-eval init
+uv run oak-eval run --suite evals.sample:suite
+```
