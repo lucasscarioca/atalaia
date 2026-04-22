@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
+import json
 
 import oak_eval.cli as cli_module
 from oak_eval import ArtifactRef, CaseResult, EvalContext, EvalSuite, RunResult, compare_runs, load_suite, run_local
+from oak_eval.adapters.http import HTTPAdapter
 from oak_eval.bundle import load_suite_from_bundle, package_suite_bundle
 from oak_eval.checks import evaluate_run_thresholds
 from oak_eval.cli import main as oak_eval_main
@@ -60,6 +64,51 @@ def test_suite_bundle_roundtrip_loads_the_sample_suite() -> None:
 
     assert suite.name == "sample"
     assert len(suite.cases) == 1
+
+
+def test_http_adapter_runs_against_a_live_http_service(tmp_path) -> None:
+    received_requests: list[dict[str, object]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+            payload = json.loads(body.decode("utf-8"))
+            received_requests.append(payload)
+            assert payload["input"]["text"] == "label:ok"
+            response = {"label": payload["input"]["text"].removeprefix("label:")}
+            encoded = json.dumps(response).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args) -> None:  # noqa: A003
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        adapter = HTTPAdapter(base_url=f"http://{host}:{port}", path="/invoke")
+        suite = EvalSuite(name="http", adapter=adapter)
+
+        @suite.case(id="invokes-http-service", input={"text": "label:ok"}, expected={"label": "ok"})
+        def check_http(ctx: EvalContext) -> None:
+            actual = ctx.adapter.invoke(ctx.case.input)
+            assert actual["label"] == ctx.case.expected["label"]
+
+        result = run_local(suite, artifact_dir=tmp_path)
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+    assert result.passed is True
+    assert result.summary == {"total": 1, "passed": 1, "failed": 0, "error": 0, "invalid_case": 0}
+    assert received_requests and received_requests[0]["input"]["text"] == "label:ok"
 
 
 def test_compare_runs_reports_case_and_summary_deltas(tmp_path) -> None:

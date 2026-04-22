@@ -33,6 +33,8 @@ uv run oak-eval worker
 
 Or use the Python SDK directly from `oak_eval` and author suites under `evals/`.
 
+The SDK also includes `oak_eval.adapters.http.HTTPAdapter` for suites that check a live HTTP service.
+
 ## Remote API foundation
 
 - Create a token with `POST /auth/tokens` using `X-Oak-Eval-Admin-Token`
