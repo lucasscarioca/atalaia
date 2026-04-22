@@ -41,17 +41,18 @@ The SDK also includes `oak_eval.adapters.http.HTTPAdapter` for suites that check
 - Use `Authorization: Bearer <token>` for `/projects` and `/runs`
 - Remote runs upload a zipped suite bundle automatically, and workers poll queued runs and complete them through the API
 
-## CI example
+## CI examples
 
-The repo includes `.github/workflows/oak-eval-ci-example.yml` as a minimal GitHub Actions example.
+The repo includes two minimal CI examples:
 
-It:
-- installs dependencies with `uv`
-- runs the local sample suite
-- optionally runs a remote suite and regression check when these secrets are set:
+- `.github/workflows/oak-eval-ci-example.yml` for GitHub Actions
+- `.gitlab-ci.yml.example` for GitLab CI
+
+Both:
+- install dependencies with `uv`
+- run the local sample suite
+- optionally run a remote suite and regression check when these variables are set:
   - `OAK_EVAL_API_URL`
   - `OAK_EVAL_TOKEN`
   - `OAK_EVAL_PROJECT_SLUG`
   - `OAK_EVAL_REFERENCE_RUN_ID`
-
-The same `oak-eval run` and `oak-eval check` commands can be copied into GitLab CI.
