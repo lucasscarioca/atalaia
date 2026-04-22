@@ -1,0 +1,59 @@
+name: oak-eval example
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    env:
+      OAK_EVAL_API_URL: ${{ secrets.OAK_EVAL_API_URL }}
+      OAK_EVAL_TOKEN: ${{ secrets.OAK_EVAL_TOKEN }}
+      OAK_EVAL_PROJECT_SLUG: ${{ secrets.OAK_EVAL_PROJECT_SLUG }}
+      OAK_EVAL_REFERENCE_RUN_ID: ${{ secrets.OAK_EVAL_REFERENCE_RUN_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run local evals
+        run: uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
+
+      - name: Remote run and regression check
+        if: env.OAK_EVAL_API_URL != '' && env.OAK_EVAL_TOKEN != '' && env.OAK_EVAL_REFERENCE_RUN_ID != ''
+        run: |
+          set -euo pipefail
+          tmp_json="$(mktemp)"
+          uv run oak-eval run \
+            --suite evals.sample:suite \
+            --remote \
+            --wait \
+            --json \
+            --api-url "$OAK_EVAL_API_URL" \
+            --token "$OAK_EVAL_TOKEN" \
+            --project-slug "${OAK_EVAL_PROJECT_SLUG:-default}" \
+            | tee "$tmp_json"
+          current_run_id="$(python - "$tmp_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text())
+print(payload["run_id"])
+PY
+)"
+          uv run oak-eval check \
+            --run-id "$current_run_id" \
+            --against "$OAK_EVAL_REFERENCE_RUN_ID" \
+            --api-url "$OAK_EVAL_API_URL" \
+            --token "$OAK_EVAL_TOKEN" \
+            --max-failed-delta 0 \
+            --max-error-delta 0
