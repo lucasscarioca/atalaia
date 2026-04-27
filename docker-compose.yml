@@ -26,6 +26,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/agent_eval}
+      OAK_EVAL_BOOTSTRAP_TOKEN: ${OAK_EVAL_BOOTSTRAP_TOKEN:-dev-bootstrap}
     ports:
       - "8000:8000"
     depends_on:
@@ -36,6 +37,41 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-eval-worker
+    environment:
+      OAK_EVAL_API_URL: http://api:8000
+      OAK_EVAL_BOOTSTRAP_TOKEN: ${OAK_EVAL_BOOTSTRAP_TOKEN:-dev-bootstrap}
+    depends_on:
+      api:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        python - <<'PY'
+        import json
+        import os
+        import urllib.request
+
+        req = urllib.request.Request(
+            "http://api:8000/tokens",
+            data=json.dumps({"name": "docker-worker"}).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "X-Oak-Eval-Admin-Token": os.environ["OAK_EVAL_BOOTSTRAP_TOKEN"],
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as response:
+            os.environ["OAK_EVAL_TOKEN"] = json.load(response)["token"]
+
+        os.execvp("uv", ["uv", "run", "oak-eval", "worker"])
+        PY
 
 volumes:
   agent_eval_postgres_data:
