@@ -13,10 +13,10 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from oak_eval import RunResult, load_suite
-from oak_eval.bundle import package_suite_bundle
-from oak_eval.client import OakEvalClient
-from oak_eval.worker import OakEvalWorker
+from atalaia import RunResult, load_suite
+from atalaia.bundle import package_suite_bundle
+from atalaia.client import AtalaiaClient
+from atalaia.worker import AtalaiaWorker
 
 engine = create_engine(
     "sqlite+pysqlite://",
@@ -42,7 +42,7 @@ client = TestClient(app)
 def _create_token() -> str:
     response = client.post(
         "/auth/tokens",
-        headers={"X-Oak-Eval-Admin-Token": "dev-bootstrap"},
+        headers={"X-Atalaia-Admin-Token": "dev-bootstrap"},
         json={"name": "ci"},
     )
     assert response.status_code == 200
@@ -81,7 +81,7 @@ class FakeClient:
 
 
 def test_worker_processes_queued_runs() -> None:
-    worker = OakEvalWorker(client=FakeClient())
+    worker = AtalaiaWorker(client=FakeClient())
 
     processed = worker.process_once()
 
@@ -95,8 +95,8 @@ def test_worker_processes_queued_runs() -> None:
 def test_remote_run_waits_for_worker_completion(tmp_path) -> None:
     token = _create_token()
     shared_client = TestClient(app)
-    api_client = OakEvalClient(base_url="", token=token, client=shared_client)
-    worker = OakEvalWorker(client=api_client)
+    api_client = AtalaiaClient(base_url="", token=token, client=shared_client)
+    worker = AtalaiaWorker(client=api_client)
 
     suite = load_suite("evals.sample:suite")
     handle = api_client.run(suite, suite_spec="evals.sample:suite", project_slug="demo", wait=False)
@@ -152,7 +152,7 @@ def test_worker_can_load_bundle_from_artifact_when_config_is_missing() -> None:
             self.completed.append(result)
             return result
 
-    worker = OakEvalWorker(client=ArtifactFallbackClient())
+    worker = AtalaiaWorker(client=ArtifactFallbackClient())
 
     processed = worker.process_once()
 
@@ -193,7 +193,7 @@ def test_worker_reports_missing_bundle_as_failure() -> None:
             self.completed.append(result)
             return result
 
-    worker = OakEvalWorker(client=MissingBundleClient())
+    worker = AtalaiaWorker(client=MissingBundleClient())
 
     processed = worker.process_once()
 

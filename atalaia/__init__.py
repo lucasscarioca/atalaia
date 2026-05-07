@@ -1,5 +1,5 @@
 from .adapters.http import HTTPAdapter
-from .client import OakEvalClient, RunHandle
+from .client import AtalaiaClient, RunHandle
 from .comparison import compare_runs
 from .core import (
     ArtifactRef,
@@ -14,7 +14,7 @@ from .core import (
     run_local,
 )
 from .loader import load_suite
-from .worker import OakEvalWorker
+from .worker import AtalaiaWorker
 
 __all__ = [
     "ArtifactRef",
@@ -25,8 +25,8 @@ __all__ = [
     "EvalContext",
     "EvalSuite",
     "HTTPAdapter",
-    "OakEvalClient",
-    "OakEvalWorker",
+    "AtalaiaClient",
+    "AtalaiaWorker",
     "RunContext",
     "RunHandle",
     "RunResult",

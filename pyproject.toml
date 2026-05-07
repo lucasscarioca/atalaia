@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "oak-eval"
+name = "atalaia"
 version = "0.1.0"
 description = "Git-native, self-hosted evals-as-code system for AI agents"
 readme = "README.md"
@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-oak-eval = "oak_eval.cli:main"
+atal = "atalaia.cli:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -29,7 +29,7 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py312"
 line-length = 120
-extend-exclude = [".oak-eval"]
+extend-exclude = [".atalaia"]
 
 [tool.ruff.lint]
 select = [
@@ -50,7 +50,7 @@ indent-style = "space"
 line-ending = "lf"
 
 [tool.setuptools.packages.find]
-include = ["app*", "oak_eval*", "evals*"]
+include = ["app*", "atalaia*", "evals*"]
 exclude = ["tests*"]
 
 [dependency-groups]

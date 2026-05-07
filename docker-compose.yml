@@ -26,7 +26,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/agent_eval}
-      OAK_EVAL_BOOTSTRAP_TOKEN: ${OAK_EVAL_BOOTSTRAP_TOKEN:-dev-bootstrap}
+      ATALAIA_BOOTSTRAP_TOKEN: ${ATALAIA_BOOTSTRAP_TOKEN:-dev-bootstrap}
     ports:
       - "8000:8000"
     depends_on:
@@ -44,8 +44,8 @@ services:
       dockerfile: Dockerfile
     container_name: agent-eval-worker
     environment:
-      OAK_EVAL_API_URL: http://api:8000
-      OAK_EVAL_BOOTSTRAP_TOKEN: ${OAK_EVAL_BOOTSTRAP_TOKEN:-dev-bootstrap}
+      ATALAIA_API_URL: http://api:8000
+      ATALAIA_BOOTSTRAP_TOKEN: ${ATALAIA_BOOTSTRAP_TOKEN:-dev-bootstrap}
     depends_on:
       api:
         condition: service_healthy
@@ -63,14 +63,14 @@ services:
             data=json.dumps({"name": "docker-worker"}).encode(),
             headers={
                 "Content-Type": "application/json",
-                "X-Oak-Eval-Admin-Token": os.environ["OAK_EVAL_BOOTSTRAP_TOKEN"],
+                "X-Atalaia-Admin-Token": os.environ["ATALAIA_BOOTSTRAP_TOKEN"],
             },
             method="POST",
         )
         with urllib.request.urlopen(req) as response:
-            os.environ["OAK_EVAL_TOKEN"] = json.load(response)["token"]
+            os.environ["ATALAIA_TOKEN"] = json.load(response)["token"]
 
-        os.execvp("uv", ["uv", "run", "oak-eval", "worker"])
+        os.execvp("uv", ["uv", "run", "atal", "worker"])
         PY
 
 volumes:

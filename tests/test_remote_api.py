@@ -10,8 +10,8 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from oak_eval import load_suite, run_local
-from oak_eval.bundle import package_suite_bundle
+from atalaia import load_suite, run_local
+from atalaia.bundle import package_suite_bundle
 
 engine = create_engine(
     "sqlite+pysqlite://",
@@ -37,7 +37,7 @@ client = TestClient(app)
 def _create_token() -> str:
     response = client.post(
         "/auth/tokens",
-        headers={"X-Oak-Eval-Admin-Token": "dev-bootstrap"},
+        headers={"X-Atalaia-Admin-Token": "dev-bootstrap"},
         json={"name": "ci"},
     )
     assert response.status_code == 200

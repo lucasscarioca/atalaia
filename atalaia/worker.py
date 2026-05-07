@@ -7,17 +7,17 @@ from tempfile import TemporaryDirectory
 import httpx
 
 from .bundle import open_suite_bundle
-from .client import OakEvalClient
+from .client import AtalaiaClient
 from .core import ArtifactRef, CaseResult, RunResult, run_local
 
 
 @dataclass(slots=True)
-class OakEvalWorker:
-    client: OakEvalClient
+class AtalaiaWorker:
+    client: AtalaiaClient
 
     @classmethod
-    def from_env(cls) -> OakEvalWorker:
-        return cls(client=OakEvalClient.from_env())
+    def from_env(cls) -> AtalaiaWorker:
+        return cls(client=AtalaiaClient.from_env())
 
     def process_once(self) -> int:
         processed = 0

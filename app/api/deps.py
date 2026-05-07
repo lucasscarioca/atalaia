@@ -32,10 +32,10 @@ def require_api_token(
 
 
 def require_admin_secret(
-    x_oak_eval_admin_token: str | None = Header(default=None, alias="X-Oak-Eval-Admin-Token"),
+    x_atalaia_admin_token: str | None = Header(default=None, alias="X-Atalaia-Admin-Token"),
 ) -> None:
     import os
 
-    expected = os.getenv("OAK_EVAL_BOOTSTRAP_TOKEN", "dev-bootstrap")
-    if x_oak_eval_admin_token != expected:
+    expected = os.getenv("ATALAIA_BOOTSTRAP_TOKEN", "dev-bootstrap")
+    if x_atalaia_admin_token != expected:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid admin token")

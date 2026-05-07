@@ -12,13 +12,13 @@ local-evals:
   script:
     - pip install uv
     - uv sync --dev
-    - uv run oak-eval run --suite evals.sample:suite --min-accuracy 0.95
+    - uv run atal run --suite evals.sample:suite --min-accuracy 0.95
 
 remote-regression:
   stage: regression
   image: python:3.12
   rules:
-    - if: '$OAK_EVAL_API_URL && $OAK_EVAL_TOKEN && $OAK_EVAL_REFERENCE_RUN_ID'
+    - if: '$ATALAIA_API_URL && $ATALAIA_TOKEN && $ATALAIA_REFERENCE_RUN_ID'
       when: on_success
     - when: never
   script:
@@ -28,14 +28,14 @@ remote-regression:
       set -euo pipefail
       # Assumes a worker is already running against the remote API.
       tmp_json="$(mktemp)"
-      uv run oak-eval run \
+      uv run atal run \
         --suite evals.sample:suite \
         --remote \
         --wait \
         --json \
-        --api-url "$OAK_EVAL_API_URL" \
-        --token "$OAK_EVAL_TOKEN" \
-        --project-slug "${OAK_EVAL_PROJECT_SLUG:-default}" \
+        --api-url "$ATALAIA_API_URL" \
+        --token "$ATALAIA_TOKEN" \
+        --project-slug "${ATALAIA_PROJECT_SLUG:-default}" \
         | tee "$tmp_json"
       current_run_id="$(python - "$tmp_json" <<'PY'
 import json
@@ -46,10 +46,10 @@ payload = json.loads(Path(sys.argv[1]).read_text())
 print(payload["run_id"])
 PY
 )"
-      uv run oak-eval check \
+      uv run atal check \
         --run-id "$current_run_id" \
-        --against "$OAK_EVAL_REFERENCE_RUN_ID" \
-        --api-url "$OAK_EVAL_API_URL" \
-        --token "$OAK_EVAL_TOKEN" \
+        --against "$ATALAIA_REFERENCE_RUN_ID" \
+        --api-url "$ATALAIA_API_URL" \
+        --token "$ATALAIA_TOKEN" \
         --max-failed-delta 0 \
         --max-error-delta 0

@@ -205,7 +205,7 @@ def run_local(
     suite: EvalSuite,
     *,
     output: str = "text",
-    artifact_dir: str | Path = ".oak-eval",
+    artifact_dir: str | Path = ".atalaia",
 ) -> RunResult:
     artifact_root = Path(artifact_dir)
     run_context = suite.new_run_context(artifact_dir=artifact_root)

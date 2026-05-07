@@ -1,4 +1,4 @@
-from oak_eval import EvalContext, EvalSuite
+from atalaia import EvalContext, EvalSuite
 
 
 class LocalAdapter:

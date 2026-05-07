@@ -9,8 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from zipfile import ZipFile
 
-import oak_eval.cli as cli_module
-from oak_eval import (
+import atalaia.cli as cli_module
+from atalaia import (
     ArtifactRef,
     CaseResult,
     EvalContext,
@@ -20,11 +20,11 @@ from oak_eval import (
     load_suite,
     run_local,
 )
-from oak_eval.adapters.http import HTTPAdapter
-from oak_eval.bundle import load_suite_from_bundle, open_suite_bundle, package_suite_bundle
-from oak_eval.checks import evaluate_comparison_thresholds, evaluate_run_thresholds
-from oak_eval.cli import main as oak_eval_main
-from oak_eval.client import OakEvalClient
+from atalaia.adapters.http import HTTPAdapter
+from atalaia.bundle import load_suite_from_bundle, open_suite_bundle, package_suite_bundle
+from atalaia.checks import evaluate_comparison_thresholds, evaluate_run_thresholds
+from atalaia.cli import main as atalaia_main
+from atalaia.client import AtalaiaClient
 
 
 @dataclass
@@ -83,7 +83,7 @@ def test_suite_bundle_roundtrip_loads_the_sample_suite() -> None:
 def test_suite_bundle_supports_top_level_modules(tmp_path, monkeypatch) -> None:
     module_path = tmp_path / "flat_eval.py"
     module_path.write_text(
-        "from oak_eval import EvalContext, EvalSuite\n"
+        "from atalaia import EvalContext, EvalSuite\n"
         "suite = EvalSuite(name='flat', adapter=object())\n"
         "@suite.case(id='flat-case', input={'text': 'x'}, expected={'label': 'ok'})\n"
         "def check_flat(ctx: EvalContext) -> None:\n"
@@ -103,7 +103,7 @@ def test_suite_bundle_context_keeps_files_available_during_execution(tmp_path, m
     package_dir = tmp_path / "lazy_suite"
     package_dir.mkdir()
     (package_dir / "__init__.py").write_text(
-        "from oak_eval import EvalContext, EvalSuite\n"
+        "from atalaia import EvalContext, EvalSuite\n"
         "from pathlib import Path\n"
         "suite = EvalSuite(name='lazy', adapter=object())\n"
         "@suite.case(id='reads-data', input={'text': 'x'}, expected={'label': 'ok'})\n"
@@ -126,9 +126,7 @@ def test_bundle_rejects_unsafe_zip_paths(tmp_path) -> None:
     archive = io.BytesIO()
     with ZipFile(archive, "w") as zf:
         zf.writestr("../escape.py", "raise SystemExit('nope')\n")
-        zf.writestr(
-            "flat_eval.py", "from oak_eval import EvalSuite\nsuite = EvalSuite(name='flat', adapter=object())\n"
-        )
+        zf.writestr("flat_eval.py", "from atalaia import EvalSuite\nsuite = EvalSuite(name='flat', adapter=object())\n")
 
     bundle = {
         "format": "zip",
@@ -184,7 +182,7 @@ def test_load_suite_from_bundle_rejects_malformed_payloads() -> None:
 
 
 def test_wait_for_run_polls_until_completion(monkeypatch) -> None:
-    client = OakEvalClient(base_url="http://example.test", token="token", client=object())
+    client = AtalaiaClient(base_url="http://example.test", token="token", client=object())
     statuses = ["queued", "running", "completed"]
 
     def fake_get_run(run_id: str) -> RunResult:
@@ -200,7 +198,7 @@ def test_wait_for_run_polls_until_completion(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(client, "get_run", fake_get_run)
-    monkeypatch.setattr("oak_eval.client.sleep", lambda _: None)
+    monkeypatch.setattr("atalaia.client.sleep", lambda _: None)
 
     result = client.wait_for_run("run-1", timeout=1)
 
@@ -403,7 +401,7 @@ def test_threshold_evaluation_can_fail_a_passing_run(tmp_path) -> None:
 
 
 def test_cli_run_exits_non_zero_when_thresholds_fail() -> None:
-    exit_code = oak_eval_main(
+    exit_code = atalaia_main(
         [
             "run",
             "--suite",
@@ -426,7 +424,7 @@ def test_cli_remote_run_json_emits_submission_payload(monkeypatch, capsys) -> No
 
     monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
 
-    exit_code = oak_eval_main(
+    exit_code = atalaia_main(
         [
             "run",
             "--suite",
@@ -455,7 +453,7 @@ def test_cli_check_rejects_comparison_thresholds_without_reference(monkeypatch, 
 
     monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
 
-    exit_code = oak_eval_main(
+    exit_code = atalaia_main(
         [
             "check",
             "--run-id",
@@ -517,7 +515,7 @@ def test_cli_check_exits_non_zero_for_regression(monkeypatch) -> None:
 
     monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
 
-    exit_code = oak_eval_main(
+    exit_code = atalaia_main(
         [
             "check",
             "--run-id",

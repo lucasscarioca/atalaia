@@ -1,1 +1,1 @@
-"""oak-eval application package."""
+"""Atalaia application package."""

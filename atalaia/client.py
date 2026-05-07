@@ -15,7 +15,7 @@ from .core import ArtifactRef, CaseResult, ComparisonResult, EvalSuite, RunResul
 @dataclass(slots=True)
 class RunHandle:
     run_id: str
-    client: OakEvalClient
+    client: AtalaiaClient
 
     def refresh(self) -> RunResult:
         return self.client.get_run(self.run_id)
@@ -24,7 +24,7 @@ class RunHandle:
         return self.client.wait_for_run(self.run_id, timeout=timeout)
 
 
-class OakEvalClient:
+class AtalaiaClient:
     def __init__(self, *, base_url: str, token: str, client: Any | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self._auth_header = {"Authorization": f"Bearer {token}"}
@@ -32,13 +32,13 @@ class OakEvalClient:
         self._owns_client = client is None
 
     @classmethod
-    def from_env(cls) -> OakEvalClient:
+    def from_env(cls) -> AtalaiaClient:
         import os
 
-        base_url = os.environ.get("OAK_EVAL_API_URL")
-        token = os.environ.get("OAK_EVAL_TOKEN")
+        base_url = os.environ.get("ATALAIA_API_URL")
+        token = os.environ.get("ATALAIA_TOKEN")
         if not base_url or not token:
-            raise RuntimeError("OAK_EVAL_API_URL and OAK_EVAL_TOKEN must be set")
+            raise RuntimeError("ATALAIA_API_URL and ATALAIA_TOKEN must be set")
         return cls(base_url=base_url, token=token)
 
     def run(

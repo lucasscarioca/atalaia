@@ -15,11 +15,11 @@ logger = getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("oak-eval app starting")
+    logger.info("Atalaia app starting")
     yield
 
 
-app = FastAPI(title="oak-eval", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Atalaia", version="0.1.0", lifespan=lifespan)
 
 app.include_router(health_router)
 app.include_router(auth_router)

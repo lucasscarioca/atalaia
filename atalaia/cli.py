@@ -9,23 +9,23 @@ from time import sleep
 from typing import Any
 
 from .checks import ThresholdReport, evaluate_comparison_thresholds, evaluate_run_thresholds
-from .client import OakEvalClient
+from .client import AtalaiaClient
 from .core import run_local
 from .loader import load_suite
-from .worker import OakEvalWorker
+from .worker import AtalaiaWorker
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="oak-eval")
+    parser = argparse.ArgumentParser(prog="atal")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = subparsers.add_parser("init", help="Create evals/ and .oak-eval/")
+    init_parser = subparsers.add_parser("init", help="Create evals/ and .atalaia/")
     init_parser.add_argument("--force", action="store_true", help="Overwrite the sample suite")
 
     run_parser = subparsers.add_parser("run", help="Run a suite locally or submit it to a remote server")
     run_parser.add_argument("--suite", required=True, help="Module path to an EvalSuite, e.g. evals.sample:suite")
     run_parser.add_argument("--json", action="store_true", help="Emit JSON output")
-    run_parser.add_argument("--artifact-dir", default=".oak-eval", help="Artifact output directory")
+    run_parser.add_argument("--artifact-dir", default=".atalaia", help="Artifact output directory")
     run_parser.add_argument("--remote", action="store_true", help="Submit the suite to a remote server")
     run_parser.add_argument("--wait", action="store_true", help="Wait for remote completion")
     run_parser.add_argument("--api-url", help="Remote API URL")
@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _cmd_init(force: bool) -> int:
     evals_dir = Path("evals")
-    state_dir = Path(".oak-eval")
+    state_dir = Path(".atalaia")
     evals_dir.mkdir(parents=True, exist_ok=True)
     state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,7 +68,7 @@ def _cmd_init(force: bool) -> int:
     sample = evals_dir / "sample.py"
     if force or not sample.exists():
         sample.write_text(
-            "from oak_eval import EvalSuite, EvalContext\n\n"
+            "from atalaia import EvalSuite, EvalContext\n\n"
             "class LocalAdapter:\n"
             "    def invoke(self, payload):\n"
             "        return {'label': str(payload['text']).removeprefix('label:')}\n\n"
@@ -105,12 +105,12 @@ def _serialize_threshold_report(report: Any) -> dict[str, Any]:
     }
 
 
-def _resolve_client(args: argparse.Namespace) -> OakEvalClient:
+def _resolve_client(args: argparse.Namespace) -> AtalaiaClient:
     if args.api_url and args.token:
-        return OakEvalClient(base_url=args.api_url, token=args.token)
+        return AtalaiaClient(base_url=args.api_url, token=args.token)
     if args.api_url or args.token:
         raise RuntimeError("provide both --api-url and --token, or neither to use env vars")
-    return OakEvalClient.from_env()
+    return AtalaiaClient.from_env()
 
 
 def _print_result(result: Any) -> None:
@@ -237,11 +237,11 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 def _cmd_worker(args: argparse.Namespace) -> int:
     if args.api_url and args.token:
-        worker = OakEvalWorker(client=OakEvalClient(base_url=args.api_url, token=args.token))
+        worker = AtalaiaWorker(client=AtalaiaClient(base_url=args.api_url, token=args.token))
     elif args.api_url or args.token:
         raise RuntimeError("provide both --api-url and --token, or neither to use env vars")
     else:
-        worker = OakEvalWorker.from_env()
+        worker = AtalaiaWorker.from_env()
 
     if args.once:
         processed = worker.process_once()
