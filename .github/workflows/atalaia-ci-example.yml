@@ -48,15 +48,7 @@ jobs:
             --token "$ATALAIA_TOKEN" \
             --project-slug "${ATALAIA_PROJECT_SLUG:-default}" \
             | tee "$tmp_json"
-          current_run_id="$(python - "$tmp_json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-payload = json.loads(Path(sys.argv[1]).read_text())
-print(payload["run_id"])
-PY
-)"
+          current_run_id="$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["run_id"])' "$tmp_json")"
           uv run atal check \
             --run-id "$current_run_id" \
             --against "$ATALAIA_REFERENCE_RUN_ID" \
