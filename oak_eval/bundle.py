@@ -6,10 +6,11 @@ import importlib.util
 import io
 import sys
 import tempfile
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterator
+from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
@@ -72,10 +73,8 @@ def _temporary_sys_path(path: str):
     try:
         yield
     finally:
-        try:
+        with suppress(ValueError):
             sys.path.remove(path)
-        except ValueError:  # pragma: no cover - defensive
-            pass
 
 
 @contextmanager

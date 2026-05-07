@@ -12,7 +12,9 @@ from app.services.remote import find_token_by_plaintext, mark_token_used
 DBSession = Annotated[Session, Depends(get_db)]
 
 
-def require_api_token(db: DBSession, authorization: str | None = Header(default=None, alias="Authorization")) -> ApiToken:
+def require_api_token(
+    db: DBSession, authorization: str | None = Header(default=None, alias="Authorization")
+) -> ApiToken:
     if authorization is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing authorization header")
     scheme, _, token = authorization.partition(" ")
@@ -29,7 +31,9 @@ def require_api_token(db: DBSession, authorization: str | None = Header(default=
     return token_row
 
 
-def require_admin_secret(x_oak_eval_admin_token: str | None = Header(default=None, alias="X-Oak-Eval-Admin-Token")) -> None:
+def require_admin_secret(
+    x_oak_eval_admin_token: str | None = Header(default=None, alias="X-Oak-Eval-Admin-Token"),
+) -> None:
     import os
 
     expected = os.getenv("OAK_EVAL_BOOTSTRAP_TOKEN", "dev-bootstrap")

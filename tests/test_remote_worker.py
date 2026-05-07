@@ -18,7 +18,6 @@ from oak_eval.bundle import package_suite_bundle
 from oak_eval.client import OakEvalClient
 from oak_eval.worker import OakEvalWorker
 
-
 engine = create_engine(
     "sqlite+pysqlite://",
     connect_args={"check_same_thread": False},

@@ -23,6 +23,20 @@ uv run oak-eval run --suite evals.sample:suite
 
 That gives you a working sample suite in `evals/sample.py`.
 
+## Development checks
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+Format code with:
+
+```bash
+uv run ruff format .
+```
+
 ## Demo path
 
 Local loop:

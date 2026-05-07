@@ -26,6 +26,29 @@ oak-eval = "oak_eval.cli:main"
 pythonpath = ["."]
 testpaths = ["tests"]
 
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [".oak-eval"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "B008", # FastAPI intentionally uses Depends/Header calls in defaults.
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
 [tool.setuptools.packages.find]
 include = ["app*", "oak_eval*", "evals*"]
 exclude = ["tests*"]
@@ -33,4 +56,5 @@ exclude = ["tests*"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "ruff>=0.15.12",
 ]

@@ -1,22 +1,30 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
-from pathlib import Path
 import base64
 import binascii
 import io
 import json
+from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 from zipfile import ZipFile
 
 import oak_eval.cli as cli_module
-from oak_eval import ArtifactRef, CaseResult, EvalContext, EvalSuite, RunResult, compare_runs, load_suite, run_local
+from oak_eval import (
+    ArtifactRef,
+    CaseResult,
+    EvalContext,
+    EvalSuite,
+    RunResult,
+    compare_runs,
+    load_suite,
+    run_local,
+)
 from oak_eval.adapters.http import HTTPAdapter
 from oak_eval.bundle import load_suite_from_bundle, open_suite_bundle, package_suite_bundle
 from oak_eval.checks import evaluate_comparison_thresholds, evaluate_run_thresholds
-from oak_eval.client import OakEvalClient
 from oak_eval.cli import main as oak_eval_main
+from oak_eval.client import OakEvalClient
 
 
 @dataclass
@@ -118,7 +126,9 @@ def test_bundle_rejects_unsafe_zip_paths(tmp_path) -> None:
     archive = io.BytesIO()
     with ZipFile(archive, "w") as zf:
         zf.writestr("../escape.py", "raise SystemExit('nope')\n")
-        zf.writestr("flat_eval.py", "from oak_eval import EvalSuite\nsuite = EvalSuite(name='flat', adapter=object())\n")
+        zf.writestr(
+            "flat_eval.py", "from oak_eval import EvalSuite\nsuite = EvalSuite(name='flat', adapter=object())\n"
+        )
 
     bundle = {
         "format": "zip",
@@ -393,13 +403,15 @@ def test_threshold_evaluation_can_fail_a_passing_run(tmp_path) -> None:
 
 
 def test_cli_run_exits_non_zero_when_thresholds_fail() -> None:
-    exit_code = oak_eval_main([
-        "run",
-        "--suite",
-        "evals.sample:suite",
-        "--min-accuracy",
-        "1.1",
-    ])
+    exit_code = oak_eval_main(
+        [
+            "run",
+            "--suite",
+            "evals.sample:suite",
+            "--min-accuracy",
+            "1.1",
+        ]
+    )
 
     assert exit_code == 1
 
@@ -414,13 +426,15 @@ def test_cli_remote_run_json_emits_submission_payload(monkeypatch, capsys) -> No
 
     monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
 
-    exit_code = oak_eval_main([
-        "run",
-        "--suite",
-        "evals.sample:suite",
-        "--remote",
-        "--json",
-    ])
+    exit_code = oak_eval_main(
+        [
+            "run",
+            "--suite",
+            "evals.sample:suite",
+            "--remote",
+            "--json",
+        ]
+    )
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
@@ -441,13 +455,15 @@ def test_cli_check_rejects_comparison_thresholds_without_reference(monkeypatch, 
 
     monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
 
-    exit_code = oak_eval_main([
-        "check",
-        "--run-id",
-        "current",
-        "--max-failed-delta",
-        "0",
-    ])
+    exit_code = oak_eval_main(
+        [
+            "check",
+            "--run-id",
+            "current",
+            "--max-failed-delta",
+            "0",
+        ]
+    )
 
     assert exit_code == 2
     assert "comparison thresholds require --against" in capsys.readouterr().err
@@ -470,7 +486,9 @@ def test_cli_check_exits_non_zero_for_regression(monkeypatch) -> None:
                 error="boom",
             )
         ],
-        artifacts=[ArtifactRef(artifact_id="current:summary.json", kind="summary", path=None, mime_type="application/json")],
+        artifacts=[
+            ArtifactRef(artifact_id="current:summary.json", kind="summary", path=None, mime_type="application/json")
+        ],
     )
     reference = RunResult(
         run_id="reference",
@@ -488,7 +506,9 @@ def test_cli_check_exits_non_zero_for_regression(monkeypatch) -> None:
                 error=None,
             )
         ],
-        artifacts=[ArtifactRef(artifact_id="reference:summary.json", kind="summary", path=None, mime_type="application/json")],
+        artifacts=[
+            ArtifactRef(artifact_id="reference:summary.json", kind="summary", path=None, mime_type="application/json")
+        ],
     )
 
     class FakeClient:
@@ -497,14 +517,16 @@ def test_cli_check_exits_non_zero_for_regression(monkeypatch) -> None:
 
     monkeypatch.setattr(cli_module, "_resolve_client", lambda args: FakeClient())
 
-    exit_code = oak_eval_main([
-        "check",
-        "--run-id",
-        "current",
-        "--against",
-        "reference",
-        "--max-failed-delta",
-        "0",
-    ])
+    exit_code = oak_eval_main(
+        [
+            "check",
+            "--run-id",
+            "current",
+            "--against",
+            "reference",
+            "--max-failed-delta",
+            "0",
+        ]
+    )
 
     assert exit_code == 1

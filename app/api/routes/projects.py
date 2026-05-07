@@ -5,7 +5,14 @@ from sqlalchemy import select
 
 from app.api.deps import DBSession, require_api_token
 from app.models.remote import Project
-from app.schemas.remote import CaseRead, ProjectCreate, ProjectRead, SuiteCreate, SuiteRead, SuiteRegistrationResponse
+from app.schemas.remote import (
+    CaseRead,
+    ProjectCreate,
+    ProjectRead,
+    SuiteCreate,
+    SuiteRead,
+    SuiteRegistrationResponse,
+)
 from app.services.remote import get_or_create_project, register_suite
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -27,7 +34,9 @@ def get_project(project_slug: str, db: DBSession, _token=Depends(require_api_tok
 
 
 @router.post("/{project_slug}/suites", response_model=SuiteRegistrationResponse)
-def create_suite(project_slug: str, payload: SuiteCreate, db: DBSession, _token=Depends(require_api_token)) -> SuiteRegistrationResponse:
+def create_suite(
+    project_slug: str, payload: SuiteCreate, db: DBSession, _token=Depends(require_api_token)
+) -> SuiteRegistrationResponse:
     project, suite, cases = register_suite(db, project_slug=project_slug, suite=payload)
     db.commit()
     return SuiteRegistrationResponse(

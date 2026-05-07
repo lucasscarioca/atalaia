@@ -90,9 +90,7 @@ def evaluate_comparison_thresholds(
         if min_accuracy_delta is not None:
             details["min_accuracy_delta"] = min_accuracy_delta
             if accuracy_delta < min_accuracy_delta:
-                reasons.append(
-                    f"accuracy delta {accuracy_delta:.3f} is below minimum {min_accuracy_delta:.3f}"
-                )
+                reasons.append(f"accuracy delta {accuracy_delta:.3f} is below minimum {min_accuracy_delta:.3f}")
     elif min_accuracy_delta is not None:
         details["min_accuracy_delta"] = min_accuracy_delta
         reasons.append("accuracy delta is unavailable")

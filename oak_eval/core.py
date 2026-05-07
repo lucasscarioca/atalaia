@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Literal
 from uuid import uuid4
-import json
 
 
 @dataclass(slots=True)

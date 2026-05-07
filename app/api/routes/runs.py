@@ -7,7 +7,16 @@ from sqlalchemy import select
 
 from app.api.deps import DBSession, require_api_token
 from app.models.remote import Run, RunArtifact, RunCaseResult
-from app.schemas.remote import ArtifactRead, RunComplete, RunCreate, RunCreateResponse, RunListRead, RunRead, RunResultRead, RunSummary
+from app.schemas.remote import (
+    ArtifactRead,
+    RunComplete,
+    RunCreate,
+    RunCreateResponse,
+    RunListRead,
+    RunRead,
+    RunResultRead,
+    RunSummary,
+)
 from app.services.remote import complete_run, create_run, get_run_summary, list_runs, start_run
 
 router = APIRouter(tags=["runs"])
@@ -58,7 +67,9 @@ def start_run_endpoint(run_id: UUID, db: DBSession, _token=Depends(require_api_t
 
 
 @router.post("/runs/{run_id}/complete", response_model=RunRead)
-def complete_run_endpoint(run_id: UUID, payload: RunComplete, db: DBSession, _token=Depends(require_api_token)) -> RunRead:
+def complete_run_endpoint(
+    run_id: UUID, payload: RunComplete, db: DBSession, _token=Depends(require_api_token)
+) -> RunRead:
     run = db.scalar(select(Run).where(Run.id == run_id))
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")

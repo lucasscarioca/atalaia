@@ -1,5 +1,13 @@
 from app.db.base import Base
-from app.models.remote import ApiToken, EvalCase, EvalSuite, Project, Run, RunArtifact, RunCaseResult
+from app.models.remote import (
+    ApiToken,
+    EvalCase,
+    EvalSuite,
+    Project,
+    Run,
+    RunArtifact,
+    RunCaseResult,
+)
 
 __all__ = [
     "ApiToken",

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
 
 import httpx
 
@@ -17,7 +16,7 @@ class OakEvalWorker:
     client: OakEvalClient
 
     @classmethod
-    def from_env(cls) -> "OakEvalWorker":
+    def from_env(cls) -> OakEvalWorker:
         return cls(client=OakEvalClient.from_env())
 
     def process_once(self) -> int:

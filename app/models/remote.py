@@ -4,7 +4,17 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Float, Integer, JSON, DateTime, ForeignKey, String, Text, Uuid, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -79,7 +89,9 @@ class Run(Base, TimestampMixin):
     summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     config_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    requested_by_token_id: Mapped[UUID | None] = mapped_column(ForeignKey("api_tokens.id", ondelete="SET NULL"), nullable=True)
+    requested_by_token_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("api_tokens.id", ondelete="SET NULL"), nullable=True
+    )
 
     project: Mapped[Project] = relationship(back_populates="runs")
     suite: Mapped[EvalSuite] = relationship(back_populates="runs")

@@ -13,7 +13,6 @@ from app.main import app
 from oak_eval import load_suite, run_local
 from oak_eval.bundle import package_suite_bundle
 
-
 engine = create_engine(
     "sqlite+pysqlite://",
     connect_args={"check_same_thread": False},

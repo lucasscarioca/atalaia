@@ -15,7 +15,7 @@ from .core import ArtifactRef, CaseResult, ComparisonResult, EvalSuite, RunResul
 @dataclass(slots=True)
 class RunHandle:
     run_id: str
-    client: "OakEvalClient"
+    client: OakEvalClient
 
     def refresh(self) -> RunResult:
         return self.client.get_run(self.run_id)
@@ -32,7 +32,7 @@ class OakEvalClient:
         self._owns_client = client is None
 
     @classmethod
-    def from_env(cls) -> "OakEvalClient":
+    def from_env(cls) -> OakEvalClient:
         import os
 
         base_url = os.environ.get("OAK_EVAL_API_URL")
@@ -185,10 +185,7 @@ class OakEvalClient:
                 }
                 for case in result.cases
             ],
-            "artifacts": [
-                self._serialize_artifact(artifact)
-                for artifact in result.artifacts
-            ],
+            "artifacts": [self._serialize_artifact(artifact) for artifact in result.artifacts],
         }
 
     def _serialize_artifact(self, artifact: ArtifactRef) -> dict[str, Any]:

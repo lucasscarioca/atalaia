@@ -8,7 +8,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.enums import ResultStatus, RunStatus
-from app.models.remote import ApiToken, EvalCase, EvalSuite, Project, Run, RunArtifact, RunCaseResult
+from app.models.remote import (
+    ApiToken,
+    EvalCase,
+    EvalSuite,
+    Project,
+    Run,
+    RunArtifact,
+    RunCaseResult,
+)
 from app.schemas.remote import CaseCreate, RunComplete, RunCreate, SuiteCreate
 
 
@@ -31,7 +39,9 @@ def generate_token() -> str:
     return f"oe_{secrets.token_urlsafe(32)}"
 
 
-def get_or_create_project(db: Session, *, slug: str, name: str | None = None, description: str | None = None) -> Project:
+def get_or_create_project(
+    db: Session, *, slug: str, name: str | None = None, description: str | None = None
+) -> Project:
     project = db.scalar(select(Project).where(Project.slug == slug))
     if project is not None:
         return project
@@ -62,9 +72,7 @@ def register_suite(
     suite: SuiteCreate,
 ) -> tuple[Project, EvalSuite, list[EvalCase]]:
     project = get_or_create_project(db, slug=project_slug)
-    suite_row = db.scalar(
-        select(EvalSuite).where(EvalSuite.project_id == project.id, EvalSuite.slug == suite.slug)
-    )
+    suite_row = db.scalar(select(EvalSuite).where(EvalSuite.project_id == project.id, EvalSuite.slug == suite.slug))
     if suite_row is None:
         suite_row = EvalSuite(
             project_id=project.id,
@@ -116,7 +124,13 @@ def create_run(db: Session, payload: RunCreate, *, token: ApiToken | None) -> Ru
     )
     project, suite_row, case_rows = register_suite(db, project_slug=payload.project_slug, suite=suite_payload)
     case_lookup = {case.case_key: case for case in case_rows}
-    summary = {"total": len(payload.suite.cases), "passed": 0, "failed": 0, "error": 0, "invalid_case": len(payload.suite.cases)}
+    summary = {
+        "total": len(payload.suite.cases),
+        "passed": 0,
+        "failed": 0,
+        "error": 0,
+        "invalid_case": len(payload.suite.cases),
+    }
     run = Run(
         project_id=project.id,
         suite_id=suite_row.id,
@@ -193,9 +207,7 @@ def complete_run(db: Session, run: Run, payload: RunComplete) -> Run:
         raise ValueError(f"run {run.id} cannot complete from status {run.status}")
 
     db.execute(delete(RunCaseResult).where(RunCaseResult.run_id == run.id))
-    db.execute(
-        delete(RunArtifact).where(RunArtifact.run_id == run.id, RunArtifact.artifact_key != "suite.bundle")
-    )
+    db.execute(delete(RunArtifact).where(RunArtifact.run_id == run.id, RunArtifact.artifact_key != "suite.bundle"))
 
     case_lookup = {case.case_key: case.id for case in run.suite.cases}
     for case in payload.cases:
